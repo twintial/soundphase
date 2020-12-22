@@ -1,0 +1,8 @@
+.idea
+__pycache__
+0
+*.wav
+build
+dist
+*.spec
+*.pcm
