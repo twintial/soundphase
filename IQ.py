@@ -130,7 +130,7 @@ def denoised_IQ(I, Q, period, fs=48e3, figure=False):
 def get_phase(I, Q, fs=48e3, figure=False):
     # s_u_a = get_phase_new(I, Q)
     signal = I + 1j*Q
-    angle = np.angle(signal, deg=True)
+    angle = np.angle(signal)
     u_a = np.unwrap(angle)
     # d = np.diff(u_a)
     if figure:
@@ -173,7 +173,7 @@ def normalize_max_min(x):
 
 if __name__ == '__main__':
     from staticremove import *
-    data, fs = load_audio_data(r'0.pcm', 'pcm')
+    data, fs = load_audio_data(r'1.pcm', 'pcm')
     # data = data[:, 0].T
     data = data[48000:]
     fc = 17350
