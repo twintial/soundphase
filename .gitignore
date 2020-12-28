@@ -1,6 +1,7 @@
 .idea
 __pycache__
 0
+chirp
 *.wav
 build
 dist

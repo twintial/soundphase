@@ -8,7 +8,7 @@ from statsmodels.tsa.seasonal import seasonal_decompose
 import sklearn
 import time
 
-index = 300
+index = 400
 plt.rcParams['font.sans-serif'] = ['SimHei']  # 显示中文标签
 plt.rcParams['axes.unicode_minus'] = False
 
@@ -77,7 +77,7 @@ def normalized_signal_fft(data, fs=48e3, figure=False):
     if figure:
         plt.figure()
         plt.plot(x, y_signle)
-        #plt.xlim((10e3, 15e3))
+        plt.xlim((0, 5000))
         plt.xlabel('Frequency (Hz)')
         plt.ylabel('power')
         plt.title('单边边振幅谱（归一化）')
@@ -87,6 +87,7 @@ def normalized_signal_fft(data, fs=48e3, figure=False):
 
 def get_IQ(data, f, fs=48e3, figure=False):
     # tx为频率为f的cos signal
+    # 不支持多声道
     times = np.arange(0, len(data)) * 1 / fs
     I_raw = np.cos(2 * np.pi * f * times) * data
     Q_raw = -np.sin(2 * np.pi * f * times) * data
@@ -113,6 +114,7 @@ def find_period(data):
     # plt.plot(np.zeros_like(x), "--", color="gray")
 
 def denoised_IQ(I, Q, period, fs=48e3, figure=False):
+    # 用seasonal_decompose
     I_d = seasonal_decompose(I, period=period, two_sided=False).trend
     I_d = np.hstack((np.array([I_d[period]] * period), I_d[period:]))
     Q_d = seasonal_decompose(Q, period=period, two_sided=False).trend
@@ -141,12 +143,12 @@ def get_phase(I, Q, fs=48e3, figure=False):
         plt.title('Phase')
     return u_a
 
-# 画圈圈
+# 画圈圈，使用时要保证不能有其他图画，不然会有问题
 def draw_circle(I, Q):
     fig, ax = plt.subplots()
-    ax.set_ylim([-1, 1])
-    ax.set_xlim([-1, 1])
-    circle, = ax.plot(I, Q, label='I/Q')
+    ax.set_ylim([0, 1.5])
+    ax.set_xlim([0, 1.5])
+    circle, = ax.plot(0, 0, label='I/Q')
     timer = fig.canvas.new_timer(interval=100)
     def OnTimer(ax):
         global index
@@ -173,14 +175,16 @@ def normalize_max_min(x):
 
 if __name__ == '__main__':
     from staticremove import *
-    data, fs = load_audio_data(r'1.pcm', 'pcm')
+    data, fs = load_audio_data(r'0.pcm', 'pcm')
     # data = data[:, 0].T
     data = data[48000:]
-    fc = 17350
+    fc = 17350 + 700*0
     data = butter_bandpass_filter(data, fc-250, fc+250)
     # normalized_signal_fft(data, figure=True)
     I, Q = get_IQ(data, fc, figure=False)
-    I_denoised, Q_denoised = denoised_IQ(I, Q, 1000, figure=False)
+    p = find_period(I[48000:3 * 48000])
+    print(p)
+    I_denoised, Q_denoised = denoised_IQ(I, Q, p, figure=False) # p=500还不错
     static_I = LEVD(I_denoised, Thr=0.0015)
     static_Q = LEVD(Q_denoised, Thr=0.0015)
     # print(np.max(static_Q))
@@ -197,10 +201,12 @@ if __name__ == '__main__':
     # print(p)
     #I_denoised, Q_denoised = denoised_IQ(I, Q, p, figure=True)
     #
-    phase = get_phase(I - static_I, Q - static_Q, figure=True)
+    phase = get_phase(I_denoised - static_I, Q_denoised - static_Q, figure=True)
     print(phase[48000*6])
     print(phase[48000*1])
-    d = -((phase[48000*6]-phase[48000*1])/(2*np.pi))*343/fc
+    t1 = 6
+    t0 = 1
+    d = -((phase[48000*t1]-phase[48000*t0])/(2*np.pi))*343/fc
     print(d)
     # get_phase(normalize(I), normalize(Q), figure=True)
 
