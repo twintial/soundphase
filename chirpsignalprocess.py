@@ -56,7 +56,7 @@ def get_virtual_xm(data, fs, T, f0, f1):
     plt.show()
     fd_index = np.argmax(y)
     fd = f[fd_index]
-    tw = fd * T / (2 * B)  # 为什么是2B
+    tw = fd * T / (B)  # 为什么是2B,好像应该是B
     while fd != 0:
         tw = T - tw
         virtual_xt = FMCW_wave_d(fs, times, T, f0, f1, tw=tw)
@@ -76,14 +76,16 @@ if __name__ == '__main__':
 
     # t = 10
     # fs = 48e3
-    # data = FMCW_wave_d(48e3, np.arange(0, t, 1 / 48e3), 0.04, 18e3, 20e3, tw=0.03)
+    # data = FMCW_wave_d(48e3, np.arange(0, t, 1 / 48e3), 0.04, 18e3, 20e3, tw=0.01)
 
     # draw_spec(data, fs)
-    xm = get_xm(data)
-    x, y = normalized_signal_fft(xm, figure=True)
-
-    fd_index = np.argmax(y)
-    fd = x[fd_index]
-    print(fd)
-    # get_virtual_xm(data, fs, 0.04, 18e3, 20e3)
+    # xm = get_xm(data)
+    # x, y = normalized_signal_fft(xm, figure=True)
+    #
+    # fd_index = np.argmax(y)
+    # sorted_index = np.argsort(y)
+    # fd = x[fd_index]
+    # print(fd)
+    # print(x[sorted_index[-3]])
+    get_virtual_xm(data, fs, 0.04, 18e3, 20e3)
     plt.show()
