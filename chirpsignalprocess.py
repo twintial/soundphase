@@ -8,7 +8,7 @@ def get_xm(data, fs=48e3):
     assert len(data.shape) == 1
     times = np.arange(0, len(data)) * 1 / fs
     # s = signal.chirp(times, 18e3, 0.04, 20e3, method='linear') * data
-    s = FMCW_wave_d(48e3, times, 0.04, 18e3, 20e3, 0.01)* data
+    s = FMCW_wave_d(48e3, times, 0.04, 18e3, 20e3, 0) * data
     # 1000应该可以支持1.5m以上的距离变动
     return butter_lowpass_filter(s, 5000)
 
@@ -16,7 +16,7 @@ def get_xm(data, fs=48e3):
 def FMCW_wave(fs, times, T, f0, f1):
     ts = np.arange(0, T, 1.0 / fs)
     sweep = signal.chirp(ts, f0, T, f1, method='linear').astype(np.float32)
-    c = int(times[-1] / T)  # 这里取整
+    c = int(times[-1] / T) + 1  # 这里取整
     rest = len(times) - c * len(ts)
     y = sweep
     for i in range(c - 1):
@@ -31,16 +31,18 @@ def FMCW_wave_d(fs, times, T, f0, f1, tw: float = 0):
     # -T<tw<T
     if tw >= T or tw <= -T:
         tw = tw % T
-    ts = ts + tw
+    # ts = ts + tw
     B = f1 - f0
     k = B / T
     sweep = np.exp(1j * 2 * np.pi * (f0 * ts + (1 / 2) * k * np.power(ts, 2)))
     c = int(times[-1] / T)  # 这里取整
     rest = len(times) - c * len(ts)
-    y = sweep.real
-    for i in range(c - 1):
+    y = []
+    for i in range(c):
         y = np.hstack((y, sweep.real))
-    y = np.hstack((y, sweep[:rest]))
+    y = np.hstack((y, sweep.real[:rest]))
+    l = int(tw * fs)
+    y = np.hstack((y[l:], y[:l]))
     return y
 
 
@@ -68,12 +70,20 @@ def get_virtual_xm(data, fs, T, f0, f1):
 
 
 if __name__ == '__main__':
-    # data, fs = load_audio_data('chirp/0/0.wav', type='wav')
-    # data = data[48000:, 0]
-    # data = butter_bandpass_filter(data, 15e3, 22e3)
-    # t = 5
-    data = FMCW_wave_d(48e3, np.arange(0, 5, 1 / 48e3), 0.04, 18e3, 20e3, tw=-0.03)
+    data, fs = load_audio_data('chirp/0/0.wav', type='wav')
+    data = data[48000:, 0]
+    data = butter_bandpass_filter(data, 15e3, 22e3)
+
+    # t = 10
+    # fs = 48e3
+    # data = FMCW_wave_d(48e3, np.arange(0, t, 1 / 48e3), 0.04, 18e3, 20e3, tw=0.03)
+
+    # draw_spec(data, fs)
     xm = get_xm(data)
     x, y = normalized_signal_fft(xm, figure=True)
+
+    fd_index = np.argmax(y)
+    fd = x[fd_index]
+    print(fd)
     # get_virtual_xm(data, fs, 0.04, 18e3, 20e3)
     plt.show()

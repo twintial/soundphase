@@ -2,6 +2,7 @@ import numpy as np
 from scipy.fftpack import fft, fftfreq
 import matplotlib.pyplot as plt
 from scipy.signal import lfilter, butter, find_peaks_cwt, find_peaks, normalize
+from scipy import signal
 from unwrap import *
 import wave
 from statsmodels.tsa.seasonal import seasonal_decompose
@@ -77,11 +78,19 @@ def normalized_signal_fft(data, fs=48e3, figure=False):
     if figure:
         plt.figure()
         plt.plot(x, y_signle)
-        plt.xlim((0, 5000))
+        plt.xlim((-1000, 5000))
         plt.xlabel('Frequency (Hz)')
         plt.ylabel('power')
         plt.title('单边边振幅谱（归一化）')
     return x, y_signle
+def draw_spec(x, fs):
+    f, t, Sxx = signal.spectrogram(x, fs)
+    plt.figure()
+    plt.pcolormesh(t, f, Sxx, shading='auto')
+    plt.ylabel('Frequency [Hz]')
+    plt.ylim((15e3, 21e3))
+    plt.xlabel('Time [sec]')
+    plt.show()
 
 
 
