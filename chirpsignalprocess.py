@@ -8,6 +8,8 @@ def get_xm(data, fs=48e3):
     assert len(data.shape) == 1
     times = np.arange(0, len(data)) * 1 / fs
     # s = signal.chirp(times, 18e3, 0.04, 20e3, method='linear') * data
+    # fmcw_t = FMCW_wave_d(48e3, times, 0.04, 18e3, 20e3, 0)
+    # s = fmcw_t[48000:] * data[48000:]
     s = FMCW_wave_d(48e3, times, 0.04, 18e3, 20e3, 0) * data
     # 1000应该可以支持1.5m以上的距离变动
     return butter_lowpass_filter(s, 5000)
@@ -70,22 +72,29 @@ def get_virtual_xm(data, fs, T, f0, f1):
 
 
 if __name__ == '__main__':
-    data, fs = load_audio_data('chirp/0/0.wav', type='wav')
-    data = data[48000:, 0]
+    # 读取数据
+    # 2,3 很正常,0,1有问题
+    data, fs = load_audio_data('chirp/0/4.wav', type='wav')
+    data = data[48000:, 0]  # 只用一个声道
     data = butter_bandpass_filter(data, 15e3, 22e3)
 
+    # 模拟
     # t = 10
     # fs = 48e3
     # data = FMCW_wave_d(48e3, np.arange(0, t, 1 / 48e3), 0.04, 18e3, 20e3, tw=0.01)
+    # data = data[48000:]
 
-    # draw_spec(data, fs)
-    # xm = get_xm(data)
-    # x, y = normalized_signal_fft(xm, figure=True)
-    #
-    # fd_index = np.argmax(y)
-    # sorted_index = np.argsort(y)
-    # fd = x[fd_index]
-    # print(fd)
-    # print(x[sorted_index[-3]])
-    get_virtual_xm(data, fs, 0.04, 18e3, 20e3)
+    draw_spec(data, fs)
+    xm = get_xm(data)
+    draw_spec(xm, fs)
+    x, y = normalized_signal_fft(xm, figure=True)
+
+    fd_index = np.argmax(y)
+    fd = x[fd_index]
+    print(fd)
+
+    v_xm = get_virtual_xm(data, fs, 0.04, 18e3, 20e3)
+    # v_xm_complex = signal.hilbert(v_xm)
+    # get_phase(v_xm_complex.real, v_xm_complex.imag, figure=True)
+    # draw_circle(normalize_max_min(v_xm_complex.real), normalize_max_min(v_xm_complex.imag))
     plt.show()

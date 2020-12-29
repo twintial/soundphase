@@ -88,7 +88,7 @@ def draw_spec(x, fs):
     plt.figure()
     plt.pcolormesh(t, f, Sxx, shading='auto')
     plt.ylabel('Frequency [Hz]')
-    plt.ylim((15e3, 21e3))
+    # plt.ylim((15e3, 21e3))
     plt.xlabel('Time [sec]')
     plt.show()
 
@@ -161,7 +161,7 @@ def draw_circle(I, Q):
     timer = fig.canvas.new_timer(interval=100)
     def OnTimer(ax):
         global index
-        n = 480
+        n = 300
         circle.set_ydata(Q[:index*n])
         circle.set_xdata(I[:index*n])
         index = index + 1
