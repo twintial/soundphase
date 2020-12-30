@@ -6,10 +6,11 @@ from scipy import signal
 from unwrap import *
 import wave
 from statsmodels.tsa.seasonal import seasonal_decompose
+from staticremove import *
 import sklearn
 import time
 
-index = 400
+index = 0
 plt.rcParams['font.sans-serif'] = ['SimHei']  # 显示中文标签
 plt.rcParams['axes.unicode_minus'] = False
 
@@ -67,18 +68,18 @@ def power2db(power):
         raise ValueError("power less than 0")
     db = (10 * np.log10(power) + 300) - 300
     return db
-def normalized_signal_fft(data, fs=48e3, figure=False):
+def normalized_signal_fft(data, fs=48e3, figure=False, xlim = (0,25e3)):
     N = len(data)
     y = np.abs(fft(data)) / N
     # 这里要不要乘2？
-    y_signle = y[:int(N / 2)] * 2
+    y_signle = y[:int(np.round(N / 2))] * 2
     x = fftfreq(N) * fs
     x = x[x >= 0]
     db = power2db(y_signle)
     if figure:
         plt.figure()
         plt.plot(x, y_signle)
-        plt.xlim((-1000, 5000))
+        plt.xlim(xlim)
         plt.xlabel('Frequency (Hz)')
         plt.ylabel('power')
         plt.title('单边边振幅谱（归一化）')
@@ -161,16 +162,16 @@ def draw_circle(I, Q):
     timer = fig.canvas.new_timer(interval=100)
     def OnTimer(ax):
         global index
-        n = 300
-        circle.set_ydata(Q[:index*n])
-        circle.set_xdata(I[:index*n])
+        speed = 300
+        circle.set_ydata(Q[:index*speed])
+        circle.set_xdata(I[:index*speed])
         index = index + 1
         ax.draw_artist(circle)
         ax.figure.canvas.draw()
-        if index*n > len(Q):
+        if index*speed > len(Q):
             print("end")
         else:
-            print(f"time:{n / 48000 * index}")
+            print(f"time:{(index*speed)/fs}")
     timer.add_callback(OnTimer, ax)
     timer.start()
     plt.show()
@@ -182,18 +183,38 @@ def normalize_max_min(x):
     return (x-min)/(max-min)
 
 
-if __name__ == '__main__':
-    from staticremove import *
+# free device的实现
+def path_length_change_estimation(data):
+    for fID in range(0, 7):
+        fc = 17350 + 700 * fID
+        data_filter = butter_bandpass_filter(data, fc - 150, fc + 150)
+        normalized_signal_fft(data_filter, figure=False)
+        plt.show()
+        I, Q = get_IQ(data_filter, fc, figure=False)
+        I_denoised, Q_denoised = denoised_IQ(I, Q, 300, figure=False)
+        static_I = LEVD(I_denoised, Thr=0.0015)
+        static_Q = LEVD(Q_denoised, Thr=0.0015)
+        phase = get_phase(I_denoised-static_I, Q_denoised-static_Q, figure=False)
+        # plt.show()
+        # if fID == 5:
+        #     n_I = normalize_max_min(I_denoised)
+        #     n_Q = normalize_max_min(Q_denoised)
+        #     draw_circle(n_I, n_Q)
+        d = -((phase[-1] - phase[0]) / (2 * np.pi)) * 343 / fc
+        print(f"fc={fc}, d={d}")
+
+
+def demo():
     data, fs = load_audio_data(r'0.pcm', 'pcm')
     # data = data[:, 0].T
     data = data[48000:]
-    fc = 17350 + 700*0
-    data = butter_bandpass_filter(data, fc-250, fc+250)
+    fc = 17350 + 700 * 0
+    data = butter_bandpass_filter(data, fc - 250, fc + 250)
     # normalized_signal_fft(data, figure=True)
     I, Q = get_IQ(data, fc, figure=False)
     p = find_period(I[48000:3 * 48000])
     print(p)
-    I_denoised, Q_denoised = denoised_IQ(I, Q, p, figure=False) # p=500还不错
+    I_denoised, Q_denoised = denoised_IQ(I, Q, p, figure=False)  # p=500还不错
     static_I = LEVD(I_denoised, Thr=0.0015)
     static_Q = LEVD(Q_denoised, Thr=0.0015)
     # print(np.max(static_Q))
@@ -206,19 +227,24 @@ if __name__ == '__main__':
     # n_Q = normalize_max_min(Q_denoised - static_Q)
     # draw_circle(n_I, n_Q)
 
-    #p = find_period(I[48000:4*48000])
+    # p = find_period(I[48000:4*48000])
     # print(p)
-    #I_denoised, Q_denoised = denoised_IQ(I, Q, p, figure=True)
+    # I_denoised, Q_denoised = denoised_IQ(I, Q, p, figure=True)
     #
     phase = get_phase(I_denoised - static_I, Q_denoised - static_Q, figure=True)
-    print(phase[48000*6])
-    print(phase[48000*1])
+    print(phase[48000 * 6])
+    print(phase[48000 * 1])
     t1 = 6
     t0 = 1
-    d = -((phase[48000*t1]-phase[48000*t0])/(2*np.pi))*343/fc
+    d = -((phase[48000 * t1] - phase[48000 * t0]) / (2 * np.pi)) * 343 / fc
     print(d)
     # get_phase(normalize(I), normalize(Q), figure=True)
 
-
     # normalized_signal_fft(I, figure=True)
     plt.show()
+
+if __name__ == '__main__':
+    data, fs = load_audio_data(r'0.pcm', 'pcm')
+    data = data[48000:]
+    for i in range(0, len(data), 512):
+        path_length_change_estimation(data[i:i+512])

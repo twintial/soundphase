@@ -46,5 +46,4 @@ if (__name__ == '__main__'):
     # print(normalize(a,norm='max'))
     a = np.array([0,1,2])
     b = np.hstack((a,a))
-    b[3] = 100
-    print(8%5)
+    print(a[1:1])
