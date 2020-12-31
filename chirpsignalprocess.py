@@ -148,18 +148,18 @@ def windowed_analyze(data, window_size=2048):
 if __name__ == '__main__':
     # 读取数据
     # 2,3 很正常,0,1有问题
-    # data, fs = load_audio_data('chirp/0/15.wav', type='wav')
-    # # data = np.diff(data[:, 0])
-    # data = data[48000:, 0]  # 只用一个声道
-    # data = butter_bandpass_filter(data, 15e3, 23e3)
+    data, fs = load_audio_data('chirp/20ms18-22/3.wav', type='wav')
+    # data = np.diff(data[:, 0])
+    data = data[48000:, 0]  # 只用一个声道
+    data = butter_bandpass_filter(data, 15e3, 23e3)
     # windowed_analyze(data)
     # 模拟
-    t = 10
-    fs = 48e3
-    data1 = FMCW_wave_d(48e3, np.arange(0, t, 1 / 48e3), 0.02, 18e3, 22e3, tw=0.005)
-    data2 = FMCW_wave_d(48e3, np.arange(0, t, 1 / 48e3), 0.02, 18e3, 22e3, tw=0.0025)
-    data = data1+data2
-    data = data[48000:]
+    # t = 10
+    # fs = 48e3
+    # data1 = FMCW_wave_d(48e3, np.arange(0, t, 1 / 48e3), 0.02, 18e3, 22e3, tw=0.005)
+    # data2 = FMCW_wave_d(48e3, np.arange(0, t, 1 / 48e3), 0.02, 18e3, 22e3, tw=0.0025)
+    # data = data1+data2
+    # data = data[48000:]
 
     draw_spec(data, fs)
     xm = get_xm(data)
