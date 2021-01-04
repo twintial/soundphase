@@ -83,7 +83,7 @@ def get_xm_sep(data, fs=48e3):
     # s = signal.chirp(times, 18e3, 0.04, 20e3, method='linear') * data
     # fmcw_t = FMCW_wave_d(48e3, times, 0.04, 18e3, 20e3, 0)
     # s = fmcw_t[48000:] * data[48000:]
-    s = FMCW_wave_d_with_sep(48e3, np.arange(0, 0.08, 1 / 48e3), 0.04, 18e3, 20e3, 0) * data
+    s = FMCW_wave_d_with_sep(48e3, times, 0.02, 18e3, 22e3, 0)[:len(data)] * data
     # 1000应该可以支持1.5m以上的距离变动
     return butter_lowpass_filter(s, 5000)
 
@@ -144,31 +144,41 @@ def windowed_analyze(data, window_size=2048):
         print(f"time:{1+i/fs}")
         plt.show()
         v_xm = get_virtual_xm_with_xm(xm[i:i+window_size], fs, 0.04, 18e3, 20e3)
+def windowed_spectrogram(data, window_size=2048, step=1000):
+    for i in range(0, len(data), step):
+        cur_data = data[i:i+window_size]
+        draw_spec(cur_data, fs)
+        # normalized_signal_fft(cur_data,figure=True, xlim=(15e3, 22e3))
+        plt.show()
+        print(f"time:{1+i/fs}")
 
 if __name__ == '__main__':
     # 读取数据
     # 2,3 很正常,0,1有问题
-    data, fs = load_audio_data('chirp/20ms18-22/3.wav', type='wav')
-    # data = np.diff(data[:, 0])
-    data = data[48000:, 0]  # 只用一个声道
+    data, fs = load_audio_data('chirp/20ms18-22/8.wav', type='wav')
+    # temp = data[:, 0]
+    # data = np.diff(temp)
+    data = data[48000:, 1]  # 只用一个声道
     data = butter_bandpass_filter(data, 15e3, 23e3)
+    # windowed_spectrogram(data)
     # windowed_analyze(data)
     # 模拟
-    # t = 10
+    # t = 0.08
     # fs = 48e3
     # data1 = FMCW_wave_d(48e3, np.arange(0, t, 1 / 48e3), 0.02, 18e3, 22e3, tw=0.005)
     # data2 = FMCW_wave_d(48e3, np.arange(0, t, 1 / 48e3), 0.02, 18e3, 22e3, tw=0.0025)
     # data = data1+data2
     # data = data[48000:]
+    # data = FMCW_wave_d_with_sep(48e3, np.arange(0, t, 1 / 48e3), 0.02, 18e3, 22e3, tw=0.005)
 
     draw_spec(data, fs)
     xm = get_xm(data)
     draw_spec(xm, fs)
     x, y = normalized_signal_fft(xm, figure=True, xlim=(-10, 6000))
-    #
-    fd_index = np.argmax(y)
-    fd = x[fd_index]
-    print(fd)
+    # #
+    # fd_index = np.argmax(y)
+    # fd = x[fd_index]
+    # print(fd)
     #
     # v_xm = get_virtual_xm(data, fs, 0.02, 16e3, 21e3)
 
