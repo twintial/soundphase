@@ -72,10 +72,20 @@ def normalized_signal_fft(data, fs=48e3, figure=False, xlim = (0,25e3)):
     N = len(data)
     y = np.abs(fft(data)) / N
     # 这里要不要乘2？
-    y_signle = y[:int(np.round(N / 2))] * 2
+    y_signle: np.ndarray = y[:int(np.round(N / 2))] * 2
     x = fftfreq(N) * fs
     x = x[x >= 0]
     db = power2db(y_signle)
+
+    # 用于调制振幅
+    # peaks, _ = find_peaks(y_signle, height=200)
+    # plt.plot(y_signle)
+    # plt.plot(peaks, y_signle[peaks], "x")
+    # plt.plot(np.zeros_like(y_signle), "--", color="gray")
+    # plt.show()
+    # print(x[peaks])
+    # print(y_signle[peaks])
+
     if figure:
         plt.figure()
         plt.plot(x, y_signle)
@@ -205,12 +215,16 @@ def path_length_change_estimation(data):
 
 
 def demo():
-    data, fs = load_audio_data(r'0.pcm', 'pcm')
+    data, fs = load_audio_data(r'sinusoid/0/1.wav', 'wav')
     # data = data[:, 0].T
-    data = data[48000:]
-    fc = 17350 + 700 * 0
-    data = butter_bandpass_filter(data, fc - 250, fc + 250)
-    # normalized_signal_fft(data, figure=True)
+    data = data[48000:, 0]
+    # fc = 17350 + 700 * 0
+    fc = 18e3
+    data = butter_bandpass_filter(data, 17000, 23000)
+    # data = data[48000:, 0]
+    normalized_signal_fft(data, figure=True, xlim=(15e3, 23e3))
+    plt.show()
+
     I, Q = get_IQ(data, fc, figure=False)
     p = find_period(I[48000:3 * 48000])
     print(p)
@@ -244,7 +258,8 @@ def demo():
     plt.show()
 
 if __name__ == '__main__':
-    data, fs = load_audio_data(r'0.pcm', 'pcm')
-    data = data[48000:]
-    for i in range(0, len(data), 512):
-        path_length_change_estimation(data[i:i+512])
+    # data, fs = load_audio_data(r'0.pcm', 'pcm')
+    # data = data[48000:]
+    # for i in range(0, len(data), 512):
+    #     path_length_change_estimation(data[i:i+512])
+    demo()

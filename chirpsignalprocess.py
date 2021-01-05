@@ -1,6 +1,8 @@
 import scipy.signal as signal
 import numpy as np
+from collections import Counter
 from IQ import *
+import pandas as pd
 
 
 def get_xm(data, fs=48e3):
@@ -152,13 +154,54 @@ def windowed_spectrogram(data, window_size=2048, step=1000):
         plt.show()
         print(f"time:{1+i/fs}")
 
+
+def get_t_power(x, fs=48e3):
+    f, t, zxx = signal.spectrogram(x, fs)
+    zxx = np.abs(zxx)
+    zxx = 20 * np.log10(zxx)
+    maxindex = zxx.argmax(axis=0)
+    tmp = Counter(maxindex).most_common(1)
+    tmp = tmp[0]
+    tmp = tmp[0]
+    # zxx = np.diff(zxx)
+    # print(tmp, int(res[0]))
+    # plt.figure()
+    # plt.pcolormesh(t[:], freq, zxx)
+    # plt.figure()
+    signal_multi = []
+    signal_mean = []
+    for i in range(max([0, tmp - 30]), tmp + 30):
+        signal_path = zxx[i, :]
+        signal_path = butter_lowpass_filter(signal_path, 8, 200, order=5)
+        signal_path = signal_path[200:]
+        # if np.mean(signal_path[:100]) >= -80:
+        #     chID = '%d' % i
+        #     cc = np.mean(signal_path[:100])
+        #     signal_path = signal_path - cc
+        #     plt.plot(signal_path, label=chID)
+        #     # plt.plot(np.diff(signal_path), label=chID)
+        #     plt.legend()
+        #     # cc.append(np.diff(signal_path))
+        # cc = np.mean(signal_path[:100])
+        # signal_path = signal_path - cc
+        signal_multi.append(signal_path)
+        signal_mean.append(np.mean(signal_path[:100]))
+    tmp = pd.Series(signal_mean).sort_values().index[-4:]
+    tmp = list(tmp)
+    tmp.sort()
+    datapro = [signal_multi[i] for i in tmp]
+    datapro = np.array(datapro)
+    # datapro = np.diff(datapro, axis=1)
+    for i in range(len(datapro)):
+        plt.plot(datapro[i])
+
 if __name__ == '__main__':
     # 读取数据
     # 2,3 很正常,0,1有问题
     data, fs = load_audio_data('chirp/20ms18-22/8.wav', type='wav')
     # temp = data[:, 0]
     # data = np.diff(temp)
-    data = data[48000:, 1]  # 只用一个声道
+    data = data[96000:, 1]  # 只用一个声道
     data = butter_bandpass_filter(data, 15e3, 23e3)
     # windowed_spectrogram(data)
     # windowed_analyze(data)
@@ -174,13 +217,15 @@ if __name__ == '__main__':
     draw_spec(data, fs)
     xm = get_xm(data)
     draw_spec(xm, fs)
+
+    v_xm = get_virtual_xm(data, fs, 0.02, 18e3, 22e3)
+    get_t_power(v_xm)
     x, y = normalized_signal_fft(xm, figure=True, xlim=(-10, 6000))
     # #
     # fd_index = np.argmax(y)
     # fd = x[fd_index]
     # print(fd)
     #
-    # v_xm = get_virtual_xm(data, fs, 0.02, 16e3, 21e3)
 
     # v_xm_complex = signal.hilbert(v_xm)
     # get_phase(v_xm_complex.real, v_xm_complex.imag, figure=True)
