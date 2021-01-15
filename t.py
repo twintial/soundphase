@@ -3,6 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.signal import find_peaks
 
+from IQ import move_average_overlap
+
 
 def read_wav_data(filename):
     '''
@@ -44,7 +46,19 @@ if (__name__ == '__main__'):
     # a = np.arange(10).reshape(1,-1)
     # print(a)
     # print(normalize(a,norm='max'))
-    a = np.array([[0,1,2], [1,3,0]])
-    b = np.hstack((a,a))
-    x = np.argmax(a, axis=1)
-    print(x)
+    a = np.array([[0,1,2,1,3,0],[1,2,3,4,5,6]])
+    # a = a.reshape((2,-1))
+    print(a)
+    # b = np.hstack((a,a))
+    # x = np.argmax(a, axis=1)
+    # print(x)
+    n = 2
+    ret = np.cumsum(a, axis=1)
+    ret[:, n:] = ret[:, n:] - ret[:, :-n]
+    b = ret[:, n - 1:] / n
+    index = np.arange(0, b.shape[1], 2)
+    print(index)
+    # c = move_average_overlap(a)
+    print(a)
+    print(b)
+    print(b[:,index])

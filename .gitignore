@@ -7,3 +7,8 @@ build
 dist
 *.spec
 *.pcm
+*.txt
+*.png
+*.zip
+*.rar
+*.csv
