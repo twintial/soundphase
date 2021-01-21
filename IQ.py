@@ -79,7 +79,7 @@ def normalized_signal_fft(data, fs=48e3, figure=False, xlim = (0,25e3)):
     db = power2db(y_signle)
 
     # 用于调制振幅
-    # peaks, _ = find_peaks(y_signle, height=20)
+    # peaks, _ = find_peaks(y_signle, height=3)
     # plt.plot(y_signle)
     # plt.plot(peaks, y_signle[peaks], "x")
     # plt.plot(np.zeros_like(y_signle), "--", color="gray")
@@ -161,9 +161,9 @@ def get_phase(I, Q, fs=48e3, figure=False):
     # angle = angle[500:]
     # angle[0:400] = angle[400:800]  # 暂时的方法
     u_a = angle
-    # u_a = np.unwrap(angle)
+    u_a = np.unwrap(angle)
     # u_a = angle
-    # u_a = np.diff(u_a)
+    u_a = np.diff(u_a)
     if figure:
         plt.figure()
         plt.plot(np.arange(0, len(u_a.reshape(-1))) * 1 / fs, u_a.reshape(-1))
@@ -262,9 +262,11 @@ def path_length_change_estimation(data):
 def demo():
     # data, fs = load_audio_data(r'D:\experiment\data\2021\毕业设计\soundgestreco\0\0\1.wav', 'wav')
     # data, fs = load_audio_data(r'D:\projects\pyprojects\gesturerecord\micarray\sinusoid2\1.wav', 'wav')
-    data, fs = load_audio_data(r'D:\实验数据\2021\毕设\micarray\sjj\gesture3\0.wav', 'wav')
-    data1 = data[48000 * 2:, 0].T
+    data, fs = load_audio_data(r'D:\实验数据\2021\毕设\micarrayspeaker\sjj\gesture2\0.wav', 'wav')
+    data1 = data[48000 * 1:, 1].T
     data2 = data[48000 * 2:, 1].T
+    # plt.plot(data1)
+    # plt.show()
     # data, fs = load_audio_data(r'D:\projects\pyprojects\andriodfaceidproject\temp\word1\shenjunjie\0.pcm', 'pcm')
     # data, fs = load_audio_data(r'gest\sjj\gesture1\1.pcm', 'pcm')
     # data = data[48000*1:]
@@ -276,11 +278,11 @@ def demo():
     step = 350
     fc = 17350
     for i in range(8):
-        fc = 17350 + step * i
+        fc = 17000 + step * i
         data_filter = butter_bandpass_filter(data1, fc - 150, fc + 150)
         data_filter2 = butter_bandpass_filter(data2, fc - 150, fc + 150)
         # data = data[48000:, 0]
-        normalized_signal_fft(data_filter, figure=True, xlim=(15e3, 23e3))
+        normalized_signal_fft(data_filter, figure=False, xlim=(15e3, 23e3))
         plt.show()
 
         I, Q = get_IQ(data_filter, fc, figure=True)
@@ -290,19 +292,19 @@ def demo():
         decompositionI = seasonal_decompose(I.T, period=2, two_sided=False)
         trendI = decompositionI.trend[2:]
 
-        I2, Q2 = get_IQ(data_filter2, fc, figure=True)
-        # denoise
-        decompositionQ2 = seasonal_decompose(Q2.T, period=2, two_sided=False)
-        trendQ2 = decompositionQ2.trend[2:]
-        decompositionI2 = seasonal_decompose(I2.T, period=2, two_sided=False)
-        trendI2 = decompositionI.trend[2:]
+        # I2, Q2 = get_IQ(data_filter2, fc, figure=True)
+        # # denoise
+        # decompositionQ2 = seasonal_decompose(Q2.T, period=2, two_sided=False)
+        # trendQ2 = decompositionQ2.trend[2:]
+        # decompositionI2 = seasonal_decompose(I2.T, period=2, two_sided=False)
+        # trendI2 = decompositionI.trend[2:]
         plt.show()
-        r = (I+1j*Q)*(I2-1j*Q2)
-        angle = np.angle(r)
-        plt.plot(np.real(r).reshape(-1))
-        plt.show()
-        plt.plot(np.imag(r).reshape(-1))
-        plt.show()
+        # r = (I+1j*Q)*(I2-1j*Q2)
+        # angle = np.angle(r)
+        # plt.plot(np.real(r).reshape(-1))
+        # plt.show()
+        # plt.plot(np.imag(r).reshape(-1))
+        # plt.show()
 
 
         # static_I = LEVD(I_denoised, Thr=0.0015)
@@ -315,7 +317,7 @@ def demo():
 
 
         phase = get_phase(trendI.reshape(1,-1), trendQ.reshape(1,-1), figure=True) # 不展开
-        # print(f"标准差:{np.std(phase)}")
+        print(f"标准差:{np.std(phase)}")
         plt.show()
         # magn = get_magnitude(trendI, trendQ, figure=True)
         plt.show()
@@ -418,29 +420,30 @@ def phasediff_between_mic():
 
 # 探究不同距离，不同角度（对单个麦克风来说，omni类型的不同角度可能没差别）的差异，为数据增强做准备
 def analyze_diff():
-    data, fs = load_audio_data(r'D:\实验数据\2021\毕设\测试\不同距离测试\0\40cm.wav', 'wav')
-    data1 = data[48000 * 2:, 2].T
-    # data1 = beamformtest()
+    data, fs = load_audio_data(r'D:\实验数据\2021\毕设\micarrayspeaker\sjj\gesture1\0.wav', 'wav')
+    data1 = data[48000 * 1:, 0].T
+    # data1 = beamform_test(data1, fs)
     # data1 = data1.reshape(-1)
     data_filter = butter_bandpass_filter(data1, 15e3, 23e3)
     normalized_signal_fft(data_filter, figure=True, xlim=(15e3, 23e3))
     plt.show()
 
     step = 350
-    fc = 17350
+    fc = 17000
     for i in range(8):
-        fc = 17350 + step * i
+        fc = 17000 + step * i
         data_filter = butter_bandpass_filter(data1, fc - 150, fc + 150)
         # data = data[48000:, 0]
         normalized_signal_fft(data_filter, figure=True, xlim=(15e3, 23e3))
         plt.show()
 
         I, Q = get_IQ(data_filter, fc, figure=True)
+
         # denoise
-        decompositionQ = seasonal_decompose(Q.T, period=2, two_sided=False)
-        trendQ = decompositionQ.trend[2:]
-        decompositionI = seasonal_decompose(I.T, period=2, two_sided=False)
-        trendI = decompositionI.trend[2:]
+        decompositionQ = seasonal_decompose(Q.T, period=10, two_sided=False)
+        trendQ = decompositionQ.trend[10:]
+        decompositionI = seasonal_decompose(I.T, period=10, two_sided=False)
+        trendI = decompositionI.trend[10:]
         plt.show()
 
         plt.plot(trendI)
@@ -453,9 +456,11 @@ def analyze_diff():
         # plt.show()
         magn = get_magnitude(trendI, trendQ, figure=True)
         plt.show()
+        plt.plot(np.diff(magn))
+        plt.show()
 
 
-def beamformtest():
+def beamform_test(data1, fs):
     r = 0.043  # 43mm
     theta = np.pi / 3
     # 7个麦克风
@@ -471,10 +476,12 @@ def beamformtest():
     angel = [[0, 0]]
     sd = bf.steering_plane_wave(pos, c, angel)
 
-    data, fs = load_audio_data(r'D:\实验数据\2021\毕设\测试\不同距离测试\0\40cm.wav', 'wav')
-    data1 = data[48000 * 2:, :7].T
+    # data, fs = load_audio_data(r'D:\projects\pyprojects\gesturerecord\0\0\0.wav', 'wav')
+    # data1 = data[48000 * 2:, :7].T
     y = bf.delay_and_sum(data1, fs, sd)
     return y
+def music_test():
+    bf.music()
 
 if __name__ == '__main__':
     # data, fs = load_audio_data(r'0.pcm', 'pcm')
