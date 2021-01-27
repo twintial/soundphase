@@ -110,14 +110,18 @@ def get_IQ(data, f, fs=48e3, figure=False):
     # tx为频率为f的cos signal
     # 不支持多声道
     times = np.arange(0, len(data)) * 1 / fs
-    times = times + 2347
     I_raw = np.cos(2 * np.pi * f * times) * data
     Q_raw = -np.sin(2 * np.pi * f * times) * data
     #
-    # I = butter_lowpass_filter(I_raw, 200)
-    # Q = butter_lowpass_filter(Q_raw, 200)
-    I = my_move_average_overlap(I_raw, 200)
-    Q = my_move_average_overlap(Q_raw, 200)
+    # I = I_raw
+    # Q = Q_raw
+    I = butter_lowpass_filter(I_raw, 200)
+    Q = butter_lowpass_filter(Q_raw, 200)
+    # I = my_move_average_overlap(I_raw, 200)
+    # Q = my_move_average_overlap(Q_raw, 200)
+
+    # normalized_signal_fft(I.reshape(-1), figure=True)
+    # plt.show()
 
     if figure:
         plt.figure()
@@ -163,7 +167,7 @@ def get_phase(I, Q, fs=48e3, figure=False):
     u_a = angle
     u_a = np.unwrap(angle)
     # u_a = angle
-    u_a = np.diff(u_a)
+    # u_a = np.diff(u_a)
     if figure:
         plt.figure()
         plt.plot(np.arange(0, len(u_a.reshape(-1))) * 1 / fs, u_a.reshape(-1))
@@ -262,9 +266,9 @@ def path_length_change_estimation(data):
 def demo():
     # data, fs = load_audio_data(r'D:\experiment\data\2021\毕业设计\soundgestreco\0\0\1.wav', 'wav')
     # data, fs = load_audio_data(r'D:\projects\pyprojects\gesturerecord\micarray\sinusoid2\1.wav', 'wav')
-    data, fs = load_audio_data(r'D:\实验数据\2021\毕设\micarrayspeaker\sjj\gesture2\0.wav', 'wav')
-    data1 = data[48000 * 1:, 1].T
-    data2 = data[48000 * 2:, 1].T
+    data, fs = load_audio_data(r'D:\projects\pyprojects\gesturerecord\0\0\7.wav', 'wav')
+    data1 = data[48000 * 1:, 0].T
+    data2 = data[48000 * 1:, 5].T
     # plt.plot(data1)
     # plt.show()
     # data, fs = load_audio_data(r'D:\projects\pyprojects\andriodfaceidproject\temp\word1\shenjunjie\0.pcm', 'pcm')
@@ -282,7 +286,7 @@ def demo():
         data_filter = butter_bandpass_filter(data1, fc - 150, fc + 150)
         data_filter2 = butter_bandpass_filter(data2, fc - 150, fc + 150)
         # data = data[48000:, 0]
-        normalized_signal_fft(data_filter, figure=False, xlim=(15e3, 23e3))
+        normalized_signal_fft(data_filter, figure=True, xlim=(15e3, 23e3))
         plt.show()
 
         I, Q = get_IQ(data_filter, fc, figure=True)
@@ -291,13 +295,14 @@ def demo():
         trendQ = decompositionQ.trend[2:]
         decompositionI = seasonal_decompose(I.T, period=2, two_sided=False)
         trendI = decompositionI.trend[2:]
+        plt.show()
 
-        # I2, Q2 = get_IQ(data_filter2, fc, figure=True)
-        # # denoise
-        # decompositionQ2 = seasonal_decompose(Q2.T, period=2, two_sided=False)
-        # trendQ2 = decompositionQ2.trend[2:]
-        # decompositionI2 = seasonal_decompose(I2.T, period=2, two_sided=False)
-        # trendI2 = decompositionI.trend[2:]
+        I2, Q2 = get_IQ(data_filter2, fc, figure=True)
+        # denoise
+        decompositionQ2 = seasonal_decompose(Q2.T, period=2, two_sided=False)
+        trendQ2 = decompositionQ2.trend[2:]
+        decompositionI2 = seasonal_decompose(I2.T, period=2, two_sided=False)
+        trendI2 = decompositionI2.trend[2:]
         plt.show()
         # r = (I+1j*Q)*(I2-1j*Q2)
         # angle = np.angle(r)
@@ -311,14 +316,18 @@ def demo():
         # static_Q = LEVD(Q_denoised, Thr=0.0015)
 
         # trendI[:10] = trendI[10:]
-        plt.plot(trendI)
-        plt.plot(trendQ)
-        plt.show()
+        # plt.plot(trendI)
+        # plt.plot(trendQ)
+        # plt.show()
 
 
-        phase = get_phase(trendI.reshape(1,-1), trendQ.reshape(1,-1), figure=True) # 不展开
-        print(f"标准差:{np.std(phase)}")
+        phase1 = get_phase(trendI.reshape(1,-1), trendQ.reshape(1,-1), figure=True) # 不展开
+        phase2 = get_phase(trendI2.reshape(1, -1), trendQ2.reshape(1, -1), figure=True)
+        print(f"标准差:{np.std(phase1)}")
         plt.show()
+        d_p = phase1 - phase2
+        plt.plot(d_p.reshape(-1)[100:])
+        plt.title("phase diff")
         # magn = get_magnitude(trendI, trendQ, figure=True)
         plt.show()
     fc = 17350
@@ -420,8 +429,8 @@ def phasediff_between_mic():
 
 # 探究不同距离，不同角度（对单个麦克风来说，omni类型的不同角度可能没差别）的差异，为数据增强做准备
 def analyze_diff():
-    data, fs = load_audio_data(r'D:\实验数据\2021\毕设\micarrayspeaker\sjj\gesture1\0.wav', 'wav')
-    data1 = data[48000 * 1:, 0].T
+    data, fs = load_audio_data(r'D:\projects\pyprojects\gesturerecord\0\0\0.wav', 'wav')
+    data1 = data[48000 * 1:, 6].T
     # data1 = beamform_test(data1, fs)
     # data1 = data1.reshape(-1)
     data_filter = butter_bandpass_filter(data1, 15e3, 23e3)
@@ -454,7 +463,7 @@ def analyze_diff():
         # phase = get_phase(trendI.reshape(1,-1), trendQ.reshape(1,-1), figure=True) # 不展开
         # # print(f"标准差:{np.std(phase)}")
         # plt.show()
-        magn = get_magnitude(trendI, trendQ, figure=True)
+        magn = get_phase(trendI, trendQ, figure=True)
         plt.show()
         plt.plot(np.diff(magn))
         plt.show()
@@ -473,7 +482,7 @@ def beamform_test(data1, fs):
     # plt.show()
     c = 343
     # angel = np.linspace(-np.pi / 2, np.pi / 2, 181)
-    angel = [[0, 0]]
+    angel = [[np.pi / 3 * 4, 0]]
     sd = bf.steering_plane_wave(pos, c, angel)
 
     # data, fs = load_audio_data(r'D:\projects\pyprojects\gesturerecord\0\0\0.wav', 'wav')
@@ -483,11 +492,134 @@ def beamform_test(data1, fs):
 def music_test():
     bf.music()
 
+# 仿真，查看相位差分的变化情况
+def simu():
+    f = 20e3
+    fs = 48e3
+    t = 1
+    phi = 0
+    Ts = 1 / fs
+    n = t / Ts
+    n = np.arange(n)
+    # 默认类型为float32
+    # x_in = np.cos(2 * np.pi * f * n * Ts + phi * (np.pi / 180)).astype(np.float32)
+    x_in = np.exp(1j * 2 * np.pi * f * n * Ts)
+    x_in = np.tile(x_in, (7, 1))
+
+    r = 0.043  # 43mm
+    theta = np.pi / 3
+    # 7个麦克风
+    pos = [[0, 0, 0]]
+    for i in range(6):
+        pos.append([r*np.cos(theta*i), r*np.sin(theta*i), 0])
+    pos = np.array(pos)
+    # print(pos)
+    # plt.plot(pos[:, 0], pos[:, 1],  '.')
+    # plt.show()
+    c = 343
+    # angel = np.linspace(-np.pi / 2, np.pi / 2, 181)
+    d = []
+    for i in range(0, 360):
+        angel = [[np.deg2rad(i), 0]]
+        sd = bf.steering_plane_wave(pos, c, angel)  # 时延
+        adjust = np.exp(1j * 2 * np.pi * f * sd)
+        adjust = adjust.T
+        simu = x_in * adjust
+
+        simu = np.real(simu)
+
+        # simu = np.abs(simu)
+        # print(simu.shape)
+
+        data1 = simu[0]
+        data2 = simu[1]
+        fc = f
+        # data_filter = butter_bandpass_filter(data1, fc - 150, fc + 150)
+        # data_filter2 = butter_bandpass_filter(data2, fc - 150, fc + 150)
+        data_filter = data1
+        data_filter2 = data2
+        # data = data[48000:, 0]
+
+        I, Q = get_IQ(data_filter, fc, figure=False)
+        # denoise
+        decompositionQ = seasonal_decompose(Q.T, period=2, two_sided=False)
+        trendQ = decompositionQ.trend[2:]
+        decompositionI = seasonal_decompose(I.T, period=2, two_sided=False)
+        trendI = decompositionI.trend[2:]
+        # plt.show()
+        I2, Q2 = get_IQ(data_filter2, fc, figure=False)
+        # denoise
+        decompositionQ2 = seasonal_decompose(Q2.T, period=2, two_sided=False)
+        trendQ2 = decompositionQ2.trend[2:]
+        decompositionI2 = seasonal_decompose(I2.T, period=2, two_sided=False)
+        trendI2 = decompositionI2.trend[2:]
+        # r = (I+1j*Q)*(I2-1j*Q2)
+        # angle = np.angle(r)
+        # plt.plot(np.real(r).reshape(-1))
+        # plt.show()
+        # plt.plot(np.imag(r).reshape(-1))
+        # plt.show()
+
+        # static_I = LEVD(I_denoised, Thr=0.0015)
+        # static_Q = LEVD(Q_denoised, Thr=0.0015)
+
+        # trendI[:10] = trendI[10:]
+        # plt.plot(trendI)
+        # plt.plot(trendQ)
+        # plt.show()
+
+        phase1 = get_phase(trendI.reshape(1, -1), trendQ.reshape(1, -1), figure=False)  # 展开
+        phase2 = get_phase(trendI2.reshape(1, -1), trendQ2.reshape(1, -1), figure=False)
+        plt.plot(I2.reshape(-1))
+        plt.show()
+        plt.plot(Q2.reshape(-1))
+        plt.show()
+
+        # print(f"标准差:{np.std(phase1)}")
+        print(np.mean(phase2))
+        # plt.show()
+        d_p = phase2 - phase1
+        d_p = d_p.reshape(-1)
+        d.append(phase2.reshape(-1)[int(len(phase2)/2)])
+        # d.append(d_p.reshape(-1)[int(len(d_p)/2)])
+        # plt.plot(d_p.reshape(-1))
+        # magn = get_magnitude(trendI, trendQ, figure=True)
+        # plt.show()
+    # d = np.unwrap(d)
+    plt.plot(d, '.') # arctan
+    plt.grid()
+    plt.show()
+def test():
+    f = 20e3
+    t = 1
+    x = np.exp(1j*2*np.pi*f*t)
+
+    delay = 0.01
+    extra = np.exp(1j*2*np.pi*f*delay)
+
+    y = x * extra
+    y_real = np.real(y)
+    print(y_real)
+    print(np.cos(2*np.pi*f*(t+delay)))
+
+    I = np.cos(2*np.pi*f*t) * y_real
+    Q = -np.sin(2*np.pi*f*t) * y_real
+
+    print(np.angle(I + Q * 1j))
+    print(np.tan(2*np.pi*f*delay))
+
+
 if __name__ == '__main__':
     # data, fs = load_audio_data(r'0.pcm', 'pcm')
     # data = data[48000:]
     # for i in range(0, len(data), 512):
     #     path_length_change_estimation(data[i:i+512])
     # demo()
+    # test()
     # phasediff_between_mic()
-    analyze_diff()
+    # analyze_diff()
+    simu()
+
+    # a = np.array([[1, 2], [3, 4]])
+    # b = np.array([[3],[4]])
+    # print(a*b)
