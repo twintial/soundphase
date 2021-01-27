@@ -117,9 +117,17 @@ def cons_ula(num, spacing):
     return np.array(pos)
 
 
+def cons_uca(r):
+    theta = np.pi / 3
+    pos = [[0, 0, 0]]
+    for i in range(6):
+        pos.append([r*np.cos(theta*i), r*np.sin(theta*i), 0])
+    return np.array(pos)
+
+
 def cons_sound_source():
-    main_source = SoundSource(np.array([1, 1 * np.sqrt(3)/3, 0]), 1, 10e3, 1) # 45度
-    other_sources = [SoundSource(np.array([-1, 1, 0]), 1, 10e3, 1)]
+    main_source = SoundSource(np.array([1, 1 * np.sqrt(3)/3, 0]), 1, 20e3, 1) # 45度
+    other_sources = [SoundSource(np.array([-1, 1, 0]), 1, 20e3, 1)]
     return main_source, other_sources
 
 
@@ -251,10 +259,11 @@ def two_dem_simu():
 
 
 def move_simu():
-    n_mic = 6
+    n_mic = 7
     c = 343
-    spacing = 0.04
-    mic_array_pos = cons_ula(n_mic, spacing)
+    spacing = 0.043
+    # mic_array_pos = cons_ula(n_mic, spacing)
+    mic_array_pos = cons_uca(spacing)
     main_source, other_sources = cons_sound_source()
 
     main_source.cal_dist(mic_array_pos)
@@ -270,31 +279,31 @@ def move_simu():
         dists.append(main_source.dist.copy())
 
     dists = np.array(dists).T
+    A = 1 / (dists ** 2)  # 衰减矩阵
     phi = 2*np.pi*main_source.f*dists/c
 
     plt.figure()
     plt.plot(phi[0])
     plt.title("origin phase")
-    plt.show()
+    # plt.show()
 
-    mic_receive_signals = np.exp(1j * phi)
+    mic_receive_signals = A * np.exp(1j * phi)
     plt.figure()
     plt.plot(np.unwrap(np.angle(mic_receive_signals[0])))
     plt.title("calculate origin phase")
     plt.show()
+    draw_circle(np.real(mic_receive_signals[0]), np.imag(mic_receive_signals[0]))
 
-
-    A = 2
+    A_other = 2
 
     for other_source in other_sources:
         d = np.reshape(other_source.dist, (n_mic, 1))
-        o_phase = A * np.exp(1j * 2 * np.pi * other_source.f*d/c)
+        o_phase = A_other * np.exp(1j * 2 * np.pi * other_source.f*d/c)
         mic_receive_signals += o_phase
     plt.figure()
     plt.plot(np.unwrap(np.angle(mic_receive_signals[0])), '.')
     plt.title("mixed phase")
-    plt.show()
-    draw_circle(np.real(mic_receive_signals[0]), np.imag(mic_receive_signals[0]))
+    # plt.show()
 
 
     # beamform
