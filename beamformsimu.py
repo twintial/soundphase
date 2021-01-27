@@ -275,22 +275,27 @@ def move_simu():
     plt.figure()
     plt.plot(phi[0])
     plt.title("origin phase")
-    # plt.show()
+    plt.show()
 
     mic_receive_signals = np.exp(1j * phi)
     plt.figure()
     plt.plot(np.unwrap(np.angle(mic_receive_signals[0])))
     plt.title("calculate origin phase")
-    # plt.show()
+    plt.show()
+
+
+    A = 2
 
     for other_source in other_sources:
         d = np.reshape(other_source.dist, (n_mic, 1))
-        o_phase = np.exp(1j * 2 * np.pi * other_source.f*d/c)
+        o_phase = A * np.exp(1j * 2 * np.pi * other_source.f*d/c)
         mic_receive_signals += o_phase
     plt.figure()
     plt.plot(np.unwrap(np.angle(mic_receive_signals[0])), '.')
     plt.title("mixed phase")
-    # plt.show()
+    plt.show()
+    draw_circle(np.real(mic_receive_signals[0]), np.imag(mic_receive_signals[0]))
+
 
     # beamform
     angel = 30
@@ -306,6 +311,30 @@ def move_simu():
     plt.figure()
     plt.plot(np.unwrap(np.angle(beamformed_signal)))
     plt.title("beamformed phase")
+    plt.show()
+
+index = 0
+def draw_circle(I, Q, fs=48e3):
+    fig, ax = plt.subplots()
+    plt.grid()
+    ax.set_ylim([-1.5, 3])
+    ax.set_xlim([-1.5, 3])
+    circle, = ax.plot(0, 0, label='I/Q')
+    timer = fig.canvas.new_timer(interval=100)
+    def OnTimer(ax):
+        global index
+        speed = 1
+        circle.set_ydata(Q[:index*speed])
+        circle.set_xdata(I[:index*speed])
+        index = index + 1
+        ax.draw_artist(circle)
+        ax.figure.canvas.draw()
+        if index*speed > len(Q):
+            print("end")
+        else:
+            print(f"time:{(index*speed)/fs}")
+    timer.add_callback(OnTimer, ax)
+    timer.start()
     plt.show()
 
 
