@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from arlpy import bf
 
+
 def steering_plane_wave(pos, c, theta):
     """Compute steering delays assuming incoming signal has a plane wavefront.
 
@@ -36,18 +37,18 @@ def steering_plane_wave(pos, c, theta):
     theta = np.asarray(theta, dtype=np.float)
     if pos.ndim == 1:
         # pos -= np.mean(pos)
-        dist = pos[:,np.newaxis] * np.sin(theta)
+        dist = pos[:, np.newaxis] * np.sin(theta)
     else:
         if pos.shape[1] != 2 and pos.shape[1] != 3:
             raise ValueError('Sensor positions must be either 2d or 3d vectors')
         # pos -= np.mean(pos, axis=0)
         if pos.shape[1] == 2:
             pos = np.c_[np.zeros(pos.shape[0]), pos]
-        azim = theta[:,0]
-        elev = theta[:,1]
-        dvec = np.array([np.cos(elev)*np.cos(azim), np.cos(elev)*np.sin(azim), np.sin(elev)])
+        azim = theta[:, 0]
+        elev = theta[:, 1]
+        dvec = np.array([np.cos(elev) * np.cos(azim), np.cos(elev) * np.sin(azim), np.sin(elev)])
         dist = np.dot(pos, dvec)
-    return -dist.T/c
+    return -dist.T / c
 
 
 def cos_wave(A, f, fs, t, phi=0):
@@ -103,10 +104,10 @@ class SoundSource:
         for pos in mic_array_pos:
             self.dist.append(np.linalg.norm(self.pos - pos))
         for dist in self.dist:
-            self.diff_dist.append(dist-self.dist[0])
+            self.diff_dist.append(dist - self.dist[0])
 
     def cal_reflect_pos(self, reflect_object_pos):
-        self.reflect_pos = [2*reflect_object_pos[0]-self.pos[0], self.pos[1], self.pos[2]]
+        self.reflect_pos = [2 * reflect_object_pos[0] - self.pos[0], self.pos[1], self.pos[2]]
 
 
 def cons_ula(num, spacing):
@@ -121,12 +122,12 @@ def cons_uca(r):
     theta = np.pi / 3
     pos = [[0, 0, 0]]
     for i in range(6):
-        pos.append([r*np.cos(theta*i), r*np.sin(theta*i), 0])
+        pos.append([r * np.cos(theta * i), r * np.sin(theta * i), 0])
     return np.array(pos)
 
 
 def cons_sound_source():
-    main_source = SoundSource(np.array([1, 1 * np.sqrt(3)/3, 0]), 1, 20e3, 1) # 45度
+    main_source = SoundSource(np.array([1, 1 * np.sqrt(3) / 3, 0]), 1, 20e3, 1)  # 45度
     other_sources = [SoundSource(np.array([-1, 1, 0]), 1, 20e3, 1)]
     return main_source, other_sources
 
@@ -280,7 +281,7 @@ def move_simu():
 
     dists = np.array(dists).T
     A = 1 / (dists ** 2)  # 衰减矩阵
-    phi = 2*np.pi*main_source.f*dists/c
+    phi = 2 * np.pi * main_source.f * dists / c
 
     plt.figure()
     plt.plot(phi[0])
@@ -292,19 +293,19 @@ def move_simu():
     plt.plot(np.unwrap(np.angle(mic_receive_signals[0])))
     plt.title("calculate origin phase")
     plt.show()
-    draw_circle(np.real(mic_receive_signals[0]), np.imag(mic_receive_signals[0]))
 
-    A_other = 2
+    A_other = 1
 
     for other_source in other_sources:
         d = np.reshape(other_source.dist, (n_mic, 1))
-        o_phase = A_other * np.exp(1j * 2 * np.pi * other_source.f*d/c)
+        o_phase = A_other * np.exp(1j * 2 * np.pi * other_source.f * d / c)
         mic_receive_signals += o_phase
     plt.figure()
     plt.plot(np.unwrap(np.angle(mic_receive_signals[0])), '.')
     plt.title("mixed phase")
-    # plt.show()
+    plt.show()
 
+    # draw_circle(np.real(mic_receive_signals[0]), np.imag(mic_receive_signals[0]))
 
     # beamform
     angel = 30
@@ -322,32 +323,92 @@ def move_simu():
     plt.title("beamformed phase")
     plt.show()
 
+    draw_circle(np.real(beamformed_signal), np.imag(beamformed_signal))
+
+
 index = 0
+
+
 def draw_circle(I, Q, fs=48e3):
     fig, ax = plt.subplots()
     plt.grid()
-    ax.set_ylim([-1.5, 3])
-    ax.set_xlim([-1.5, 3])
+    ax.set_ylim([-10, 10])
+    ax.set_xlim([-10, 10])
     circle, = ax.plot(0, 0, label='I/Q')
     timer = fig.canvas.new_timer(interval=100)
+
     def OnTimer(ax):
         global index
         speed = 1
-        circle.set_ydata(Q[:index*speed])
-        circle.set_xdata(I[:index*speed])
+        circle.set_ydata(Q[:index * speed])
+        circle.set_xdata(I[:index * speed])
         index = index + 1
         ax.draw_artist(circle)
         ax.figure.canvas.draw()
-        if index*speed > len(Q):
+        if index * speed > len(Q):
             print("end")
         else:
-            print(f"time:{(index*speed)/fs}")
+            print(f"time:{(index * speed) / fs}")
+
     timer.add_callback(OnTimer, ax)
     timer.start()
     plt.show()
 
 
+"""
+aziang = np.arange(-180, 180)
+eleang = np.arange(-1, 30)
+"""
+def music(x: np.ndarray, pos, f, c, aziang, eleang, nsignals):
+    # a = bf.covariance(x)
+    R = np.dot(x, x.conj().T) / 1000
+    D, V = np.linalg.eigh(R)
+    idx = D.argsort()[::-1]
+    eigenvals = D[idx]  # Sorted vector of eigenvalues
+    eigenvects = V[:, idx]  # Eigenvectors rearranged accordingly
+    noise_eigenvects = eigenvects[:, nsignals:len(eigenvects)]  # Noise eigenvectors
+    # 计算迭代次数，最小化计算开销
+    len_az = len(aziang)
+    len_el = len(eleang)
+    pattern_shape = (len_el, len_az)
+    scan_az, scan_el = np.meshgrid(aziang, eleang)
+    scan_angles = np.vstack((scan_az.reshape(-1, order='F'), scan_el.reshape(-1, order='F'))) # shape=(2, len_el*len_az)
+
+    num_iter = min(len_el, len_az)
+    scan_angle_block_size = max(len_el, len_az)
+    scan_angle_block_index = np.arange(scan_angle_block_size)
+    # scan
+    pattern = np.zeros(len_az * len_el)
+    for i in range(num_iter):
+        cur_idx = scan_angle_block_index + i * scan_angle_block_size
+        cur_angles = scan_angles[:, cur_idx]
+        time_delay = bf.steering_plane_wave(pos, c, np.deg2rad(cur_angles.T)).T
+        a = np.exp(-1j*2*np.pi*f*time_delay)
+        # 两种方法一样
+        # A = a.conj().T.dot(noise_eigenvects).dot(noise_eigenvects.conj().T).dot(a)
+        # D = np.diag(A)
+        D = np.sum(np.abs((a.T.dot(noise_eigenvects)))**2, 1)
+        pattern[cur_idx] = 1 / D
+    scan_pattern = np.sqrt(pattern).reshape(pattern_shape, order='F')
+    return scan_pattern
+
+
+
+
+
 if __name__ == '__main__':
     # one_source_no_wall_simu_2()
     # two_dem_simu()
-    move_simu()
+    # move_simu()
+    # music(np.random.random((7,1000)),cons_uca(0.043),20e3,343,np.arange(-180, 181),np.arange(-1, 31), 1)
+
+    # print(np.arange(100))
+    # aziang = np.arange(-180, 180)
+    # eleang = np.arange(-1, 30)
+    # xx, yy = np.meshgrid(aziang, eleang)
+    # scan_angles = np.vstack((xx.reshape(-1, order='F'), yy.reshape(-1, order='F')))
+    # pass
+    a = np.array([1,2,3,4,5,6])
+    print(a.reshape((2,3), order='F'))
+    # a[0:2] = [2,3]
+    # print(a)

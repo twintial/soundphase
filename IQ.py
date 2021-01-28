@@ -10,10 +10,10 @@ from staticremove import *
 from arlpy import bf, utils
 import sklearn
 import time
-
 index = 0
 plt.rcParams['font.sans-serif'] = ['SimHei']  # 显示中文标签
 plt.rcParams['axes.unicode_minus'] = False
+
 
 def get_dtype_from_width(width, unsigned=True):
     if width == 1:
@@ -29,6 +29,8 @@ def get_dtype_from_width(width, unsigned=True):
         return np.float32
     else:
         raise ValueError("Invalid width: %d" % width)
+
+
 def load_audio_data(filename, type='pcm'):
     if type == 'pcm':
         rawdata = np.memmap(filename, dtype=np.float32, mode='r')
@@ -69,7 +71,9 @@ def power2db(power):
         raise ValueError("power less than 0")
     db = (10 * np.log10(power) + 300) - 300
     return db
-def normalized_signal_fft(data, fs=48e3, figure=False, xlim = (0,25e3)):
+
+
+def normalized_signal_fft(data, fs=48e3, figure=False, xlim=(0, 25e3)):
     N = len(data)
     y = np.abs(fft(data)) / N
     # 这里要不要乘2？
@@ -95,6 +99,8 @@ def normalized_signal_fft(data, fs=48e3, figure=False, xlim = (0,25e3)):
         plt.ylabel('power')
         plt.title('单边边振幅谱（归一化）')
     return x, y_signle
+
+
 def draw_spec(x, fs):
     f, t, Sxx = signal.spectrogram(x, fs)
     plt.figure()
@@ -103,7 +109,6 @@ def draw_spec(x, fs):
     # plt.ylim((15e3, 21e3))
     plt.xlabel('Time [sec]')
     plt.show()
-
 
 
 def get_IQ(data, f, fs=48e3, figure=False):
@@ -133,6 +138,7 @@ def get_IQ(data, f, fs=48e3, figure=False):
         plt.legend()
     return I, Q
 
+
 def find_period(data):
     peaks, _ = find_peaks(data)
     internal = np.mean(np.diff(peaks))
@@ -141,6 +147,7 @@ def find_period(data):
     # plt.plot(data)
     # plt.plot(peaks, data[peaks], "x")
     # plt.plot(np.zeros_like(x), "--", color="gray")
+
 
 def denoised_IQ(I, Q, period, fs=48e3, figure=False):
     # 用seasonal_decompose
@@ -158,9 +165,10 @@ def denoised_IQ(I, Q, period, fs=48e3, figure=False):
         plt.legend()
     return I_d, Q_d
 
+
 def get_phase(I, Q, fs=48e3, figure=False):
     # s_u_a = get_phase_new(I, Q)
-    signal = I + 1j*Q
+    signal = I + 1j * Q
     angle = np.angle(signal)
     # angle = angle[500:]
     # angle[0:400] = angle[400:800]  # 暂时的方法
@@ -176,10 +184,11 @@ def get_phase(I, Q, fs=48e3, figure=False):
         plt.title('Phase')
     return u_a
 
+
 def get_magnitude(I: np.ndarray, Q: np.ndarray, figure=False) -> np.ndarray:
     signal = I + 1j * Q
     magn = np.abs(signal)
-    magn = 10*np.log10(magn)
+    magn = 10 * np.log10(magn)
     # 用麦克风阵列最后几个值会有一些问题，去掉比较好
     # magn = magn[:, :-10]
     if figure:
@@ -190,15 +199,16 @@ def get_magnitude(I: np.ndarray, Q: np.ndarray, figure=False) -> np.ndarray:
         plt.title('Magnitude')
     return magn
 
+
 def move_average_overlap(data):
     win_size = 200
     new_len = len(data) // win_size
     data = data[0:new_len * win_size]
-    new_len = new_len*2
+    new_len = new_len * 2
     result = np.zeros(new_len)
     for index in range(0, new_len):
-        start = (index/2)*win_size
-        end = (index/2+1)*win_size
+        start = (index / 2) * win_size
+        end = (index / 2 + 1) * win_size
         result[index] = np.mean(data[int(start):int(end)])
     return result
 
@@ -212,6 +222,7 @@ def my_move_average_overlap(data, n):
     index = np.arange(0, b.shape[1], 100)
     return b[:, index]
 
+
 # 画圈圈，使用时要保证不能有其他图画，不然会有问题
 def draw_circle(I, Q, fs=48e3):
     fig, ax = plt.subplots()
@@ -219,18 +230,20 @@ def draw_circle(I, Q, fs=48e3):
     ax.set_xlim([0, 1.5])
     circle, = ax.plot(0, 0, label='I/Q')
     timer = fig.canvas.new_timer(interval=100)
+
     def OnTimer(ax):
         global index
         speed = 300
-        circle.set_ydata(Q[:index*speed])
-        circle.set_xdata(I[:index*speed])
+        circle.set_ydata(Q[:index * speed])
+        circle.set_xdata(I[:index * speed])
         index = index + 1
         ax.draw_artist(circle)
         ax.figure.canvas.draw()
-        if index*speed > len(Q):
+        if index * speed > len(Q):
             print("end")
         else:
-            print(f"time:{(index*speed)/fs}")
+            print(f"time:{(index * speed) / fs}")
+
     timer.add_callback(OnTimer, ax)
     timer.start()
     plt.show()
@@ -239,7 +252,7 @@ def draw_circle(I, Q, fs=48e3):
 def normalize_max_min(x):
     max = np.max(x)
     min = np.min(x)
-    return (x-min)/(max-min)
+    return (x - min) / (max - min)
 
 
 # free device的实现
@@ -253,7 +266,7 @@ def path_length_change_estimation(data):
         I_denoised, Q_denoised = denoised_IQ(I, Q, 300, figure=False)
         static_I = LEVD(I_denoised, Thr=0.0015)
         static_Q = LEVD(Q_denoised, Thr=0.0015)
-        phase = get_phase(I_denoised-static_I, Q_denoised-static_Q, figure=False)
+        phase = get_phase(I_denoised - static_I, Q_denoised - static_Q, figure=False)
         # plt.show()
         # if fID == 5:
         #     n_I = normalize_max_min(I_denoised)
@@ -266,7 +279,7 @@ def path_length_change_estimation(data):
 def demo():
     # data, fs = load_audio_data(r'D:\experiment\data\2021\毕业设计\soundgestreco\0\0\1.wav', 'wav')
     # data, fs = load_audio_data(r'D:\projects\pyprojects\gesturerecord\micarray\sinusoid2\1.wav', 'wav')
-    data, fs = load_audio_data(r'D:\projects\pyprojects\gesturerecord\0\0\7.wav', 'wav')
+    data, fs = load_audio_data(r'D:\实验数据\2021\毕设\micarrayspeaker\sjj\gesture1\0.wav', 'wav')
     data1 = data[48000 * 1:, 0].T
     data2 = data[48000 * 1:, 5].T
     # plt.plot(data1)
@@ -311,7 +324,6 @@ def demo():
         # plt.plot(np.imag(r).reshape(-1))
         # plt.show()
 
-
         # static_I = LEVD(I_denoised, Thr=0.0015)
         # static_Q = LEVD(Q_denoised, Thr=0.0015)
 
@@ -320,8 +332,7 @@ def demo():
         # plt.plot(trendQ)
         # plt.show()
 
-
-        phase1 = get_phase(trendI.reshape(1,-1), trendQ.reshape(1,-1), figure=True) # 不展开
+        phase1 = get_phase(trendI.reshape(1, -1), trendQ.reshape(1, -1), figure=True)  # 不展开
         phase2 = get_phase(trendI2.reshape(1, -1), trendQ2.reshape(1, -1), figure=True)
         print(f"标准差:{np.std(phase1)}")
         plt.show()
@@ -332,7 +343,7 @@ def demo():
         plt.show()
     fc = 17350
     for win in range(0, len(data1), 2048):
-        data_win = data1[win:win+2048]
+        data_win = data1[win:win + 2048]
         print(f"time:{1 + win / fs}")
         for i in range(1):
             fc = 17350 + 700 * i
@@ -345,7 +356,6 @@ def demo():
             phase = get_phase(I, Q, figure=True)
             print(f"标准差:{np.std(phase)}")
             plt.show()
-
 
     p = find_period(I[48000:3 * 48000])
     print(p)
@@ -459,7 +469,6 @@ def analyze_diff():
         plt.plot(trendQ)
         plt.show()
 
-
         # phase = get_phase(trendI.reshape(1,-1), trendQ.reshape(1,-1), figure=True) # 不展开
         # # print(f"标准差:{np.std(phase)}")
         # plt.show()
@@ -475,7 +484,7 @@ def beamform_test(data1, fs):
     # 7个麦克风
     pos = [[0, 0, 0]]
     for i in range(6):
-        pos.append([r*np.cos(theta*i), r*np.sin(theta*i), 0])
+        pos.append([r * np.cos(theta * i), r * np.sin(theta * i), 0])
     pos = np.array(pos)
     print(pos)
     # plt.plot(pos[:, 0], pos[:, 1],  '.')
@@ -489,8 +498,8 @@ def beamform_test(data1, fs):
     # data1 = data[48000 * 2:, :7].T
     y = bf.delay_and_sum(data1, fs, sd)
     return y
-def music_test():
-    bf.music()
+
+
 
 # 仿真，查看相位差分的变化情况
 def simu():
@@ -511,7 +520,7 @@ def simu():
     # 7个麦克风
     pos = [[0, 0, 0]]
     for i in range(6):
-        pos.append([r*np.cos(theta*i), r*np.sin(theta*i), 0])
+        pos.append([r * np.cos(theta * i), r * np.sin(theta * i), 0])
     pos = np.array(pos)
     # print(pos)
     # plt.plot(pos[:, 0], pos[:, 1],  '.')
@@ -580,33 +589,35 @@ def simu():
         # plt.show()
         d_p = phase2 - phase1
         d_p = d_p.reshape(-1)
-        d.append(phase2.reshape(-1)[int(len(phase2)/2)])
+        d.append(phase2.reshape(-1)[int(len(phase2) / 2)])
         # d.append(d_p.reshape(-1)[int(len(d_p)/2)])
         # plt.plot(d_p.reshape(-1))
         # magn = get_magnitude(trendI, trendQ, figure=True)
         # plt.show()
     # d = np.unwrap(d)
-    plt.plot(d, '.') # arctan
+    plt.plot(d, '.')  # arctan
     plt.grid()
     plt.show()
+
+
 def test():
     f = 20e3
     t = 1
-    x = np.exp(1j*2*np.pi*f*t)
+    x = np.exp(1j * 2 * np.pi * f * t)
 
     delay = 0.01
-    extra = np.exp(1j*2*np.pi*f*delay)
+    extra = np.exp(1j * 2 * np.pi * f * delay)
 
     y = x * extra
     y_real = np.real(y)
     print(y_real)
-    print(np.cos(2*np.pi*f*(t+delay)))
+    print(np.cos(2 * np.pi * f * (t + delay)))
 
-    I = np.cos(2*np.pi*f*t) * y_real
-    Q = -np.sin(2*np.pi*f*t) * y_real
+    I = np.cos(2 * np.pi * f * t) * y_real
+    Q = -np.sin(2 * np.pi * f * t) * y_real
 
     print(np.angle(I + Q * 1j))
-    print(np.tan(2*np.pi*f*delay))
+    print(np.tan(2 * np.pi * f * delay))
 
 
 if __name__ == '__main__':
@@ -614,11 +625,11 @@ if __name__ == '__main__':
     # data = data[48000:]
     # for i in range(0, len(data), 512):
     #     path_length_change_estimation(data[i:i+512])
-    # demo()
+    demo()
     # test()
     # phasediff_between_mic()
     # analyze_diff()
-    simu()
+    # simu()
 
     # a = np.array([[1, 2], [3, 4]])
     # b = np.array([[3],[4]])
