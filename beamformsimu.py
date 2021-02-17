@@ -2,6 +2,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from arlpy import bf
 
+from IQ import load_audio_data
+
 
 def steering_plane_wave(pos, c, theta):
     """Compute steering delays assuming incoming signal has a plane wavefront.
@@ -125,10 +127,9 @@ def cons_uca(r):
         pos.append([r * np.cos(theta * i), r * np.sin(theta * i), 0])
     return np.array(pos)
 
-
-def cons_sound_source():
-    main_source = SoundSource(np.array([1, 1 * np.sqrt(3) / 3, 0]), 1, 20e3, 1)  # 45度
-    other_sources = [SoundSource(np.array([-1, 1, 0]), 1, 20e3, 1)]
+def cons_sound_source(f):
+    main_source = SoundSource(np.array([1, 1 * np.tan(np.deg2rad(30)), 0]), 1, f, 1)  # 45度
+    other_sources = [SoundSource(np.array([-1, -1 * np.tan(np.deg2rad(100)), 0]), 1, f, 1)]
     return main_source, other_sources
 
 
@@ -167,18 +168,25 @@ def one_source_no_wall_simu():
 
 def one_source_no_wall_simu_2():
     c = 343
-    spacing = 0.1
-    mic_array_pos = cons_ula(2, spacing)
+    spacing = 0.03
+    mic_array_pos = cons_ula(7, spacing)
+    # mic_array_pos = cons_uca(spacing)
     main_source, _ = cons_sound_source()
     main_source.cal_dist(mic_array_pos)
     # 每个麦克风接收到的信号
-    x_in = np.tile(main_source.signal, (2, 1))
+    x_in = np.tile(main_source.signal, (7, 1))
+
+    angel = [[np.deg2rad(20), 0]]
+    sd = steering_plane_wave(mic_array_pos, c, angel)  # 时延
+    adjust = np.exp(1j * 2 * np.pi * main_source.f * sd)
+    adjust = adjust.T
+    mic_receive_signals = x_in * adjust
 
     angel = [[np.deg2rad(100), 0]]
     sd = steering_plane_wave(mic_array_pos, c, angel)  # 时延
     adjust = np.exp(1j * 2 * np.pi * main_source.f * sd)
     adjust = adjust.T
-    mic_receive_signals = x_in * adjust
+    mic_receive_signals += x_in * adjust
 
     # angel2 = [[np.deg2rad(120), 0]]
     # sd2 = steering_plane_wave(mic_array_pos, c, angel2)  # 时延
@@ -189,18 +197,22 @@ def one_source_no_wall_simu_2():
     # adjust = np.exp(-1j * 2 * np.pi * main_source.f * sd)
     # adjust = adjust.T
     # mic_receive_signals = mic_receive_signals * adjust
+    # sp = music(mic_receive_signals, mic_array_pos, 20e3, c, np.arange(0, 360), np.arange(-30, 30), 1)
+    # # plt.plot(sp.reshape(-1))
+    # # plt.show()
+    # plt.pcolormesh(sp)
+    # plt.colorbar()
+    # plt.show()
     # 角度估计
     sigma = []
     for angel in range(0, 180):
-        if angel == 40:
-            print('xx')
         two_angel = [[np.deg2rad(angel), 0]]
         sd = steering_plane_wave(mic_array_pos, c, two_angel)
         adjust = np.exp(-1j * 2 * np.pi * main_source.f * sd)
         syn_signals = mic_receive_signals * adjust.T
         # syn_signals = np.real(syn_signals)
         beamformed_signal = np.sum(syn_signals, axis=0)
-        print(np.sum(abs(beamformed_signal)))
+        # print(np.sum(abs(beamformed_signal)))
         sigma.append(np.sum(abs(beamformed_signal)))
     print(np.argmax(sigma))
     plt.plot(sigma)
@@ -219,42 +231,54 @@ def one_source_no_wall_simu_2():
 
 
 def two_dem_simu():
-    spacing = 0.09
-    mic_array_pos = cons_ula(6, spacing)
-    main_source, other_sources = cons_sound_source()
-    wall_pos = cons_reflect_object()
+    nmic = 7
+    spacing = 0.03
+    f = 5e3
+    for f in np.arange(5e3, 20e3, 3000):
+        # mic_array_pos = cons_ula(nmic, spacing)
+        mic_array_pos = cons_uca(spacing)
+        main_source, other_sources = cons_sound_source(f)
+        wall_pos = cons_reflect_object()
 
-    main_source.cal_dist(mic_array_pos)
-    main_source.cal_reflect_pos(wall_pos)
+        main_source.cal_dist(mic_array_pos)
+        main_source.cal_reflect_pos(wall_pos)
 
-    for other_source in other_sources:
-        other_source.cal_dist(mic_array_pos)
-        other_source.cal_reflect_pos(wall_pos)
+        for other_source in other_sources:
+            other_source.cal_dist(mic_array_pos)
+            other_source.cal_reflect_pos(wall_pos)
 
-    c = 343
-    mic_receive_signals = []
-    for d_diff in main_source.diff_dist:
-        signal = main_source.signal * np.exp(1j * 2 * np.pi * main_source.f * d_diff / c)
-        mic_receive_signals.append(signal)
-    mic_receive_signals = np.array(mic_receive_signals)
+        c = 343
+        mic_receive_signals = []
+        for d_diff in main_source.diff_dist:
+            signal = main_source.signal * np.exp(1j * 2 * np.pi * main_source.f * d_diff / c)
+            mic_receive_signals.append(signal)
+        mic_receive_signals = np.array(mic_receive_signals)
 
-    for other_source in other_sources:
-        for i, d_diff in enumerate(other_source.diff_dist):
-            signal = other_source.signal * np.exp(1j * 2 * np.pi * main_source.f * d_diff / c)
-            mic_receive_signals[i] += signal
+        A = 1
+        for other_source in other_sources:
+            for i, d_diff in enumerate(other_source.diff_dist):
+                signal = other_source.signal * np.exp(1j * 2 * np.pi * main_source.f * d_diff / c)
+                mic_receive_signals[i] += A * signal
 
-    # 估计
-    sigma = []
-    for angel in range(0, 180):
-        two_angel = [[np.deg2rad(angel), 0]]
-        sd = steering_plane_wave(mic_array_pos, c, two_angel)
-        adjust = np.exp(-1j * 2 * np.pi * main_source.f * sd)
-        syn_signals = mic_receive_signals * adjust.T
-        # syn_signals = np.real(syn_signals)
-        beamformed_signal = np.sum(syn_signals, axis=0)
-        sigma.append(np.sum(abs(beamformed_signal)))
-    print(np.argmax(sigma))
-    plt.plot(sigma)
+        # sp = music(mic_receive_signals, mic_array_pos, 20e3, c, np.arange(0, 360), np.arange(0, 30), 2)
+        # # plt.plot(sp.reshape(-1))
+        # plt.pcolormesh(sp)
+        # plt.show()
+
+        # 估计
+        sigma = []
+        for angel in range(0, 180):
+            two_angel = [[np.deg2rad(angel), 0]]
+            sd = steering_plane_wave(mic_array_pos, c, two_angel)
+            adjust = np.exp(-1j * 2 * np.pi * main_source.f * sd)
+            syn_signals = mic_receive_signals * adjust.T
+            # syn_signals = np.real(syn_signals)
+            beamformed_signal = np.sum(syn_signals, axis=0)
+            sigma.append(np.mean(abs(beamformed_signal)))
+        print(np.argmax(sigma))
+        plt.plot(sigma, label=f'f:{f}')
+    plt.title(f"uca,change with f. 30°and100°,n_mic={nmic}, spacing={spacing}")
+    plt.legend()
     plt.grid()
     plt.show()
 
@@ -263,9 +287,9 @@ def move_simu():
     n_mic = 7
     c = 343
     spacing = 0.043
-    # mic_array_pos = cons_ula(n_mic, spacing)
-    mic_array_pos = cons_uca(spacing)
-    main_source, other_sources = cons_sound_source()
+    mic_array_pos = cons_ula(n_mic, spacing)
+    # mic_array_pos = cons_uca(spacing)
+    main_source, other_sources = cons_sound_source(20e3)
 
     main_source.cal_dist(mic_array_pos)
     for other_source in other_sources:
@@ -284,15 +308,17 @@ def move_simu():
     phi = 2 * np.pi * main_source.f * dists / c
 
     plt.figure()
+    plt.subplot(2,2,1)
     plt.plot(phi[0])
     plt.title("origin phase")
     # plt.show()
 
     mic_receive_signals = A * np.exp(1j * phi)
-    plt.figure()
+    # plt.figure()
+    plt.subplot(2,2,2)
     plt.plot(np.unwrap(np.angle(mic_receive_signals[0])))
     plt.title("calculate origin phase")
-    plt.show()
+    # plt.show()
 
     A_other = 1
 
@@ -300,10 +326,11 @@ def move_simu():
         d = np.reshape(other_source.dist, (n_mic, 1))
         o_phase = A_other * np.exp(1j * 2 * np.pi * other_source.f * d / c)
         mic_receive_signals += o_phase
-    plt.figure()
-    plt.plot(np.unwrap(np.angle(mic_receive_signals[0])), '.')
+    # plt.figure()
+    plt.subplot(2,2,3)
+    plt.plot(np.unwrap(np.angle(mic_receive_signals[0])))
     plt.title("mixed phase")
-    plt.show()
+    # plt.show()
 
     # draw_circle(np.real(mic_receive_signals[0]), np.imag(mic_receive_signals[0]))
 
@@ -318,7 +345,8 @@ def move_simu():
     # syn_signals = np.real(syn_signals)
     beamformed_signal = np.sum(syn_signals, axis=0)
 
-    plt.figure()
+    # plt.figure()
+    plt.subplot(2,2,4)
     plt.plot(np.unwrap(np.angle(beamformed_signal)))
     plt.title("beamformed phase")
     plt.show()
@@ -393,13 +421,37 @@ def music(x: np.ndarray, pos, f, c, aziang, eleang, nsignals):
     return scan_pattern
 
 
+def music_test():
+    DELAY_TIME = 1
+    data, fs = load_audio_data(r'D:\projects\pyprojects\gesturerecord\0\0\0.wav', 'wav')
+    data = data.T
+    data = data[:7, int(fs * DELAY_TIME):]
+
+    fc = 2e3
+    c = 343
+    spacing = 0.043
+    mic_array_pos = cons_uca(spacing)
+    plt.ion()
+
+    for i in range(0, data.shape[1]-2048, 2048):
+        print(f"time:{i/48000}")
+        plt.clf()
+        d = data[:, i:i+2048]
+        sp = music(d, mic_array_pos, fc, c, np.arange(0, 180), np.arange(0, 80), 1)
+        # plt.plot(sp.reshape(-1))
+        plt.pcolormesh(sp)
+        plt.pause(1)
+
+
 
 
 
 if __name__ == '__main__':
+    # music_test()
     # one_source_no_wall_simu_2()
+    # z = np.random.randn(1000).view(np.complex128)
     # two_dem_simu()
-    # move_simu()
+    move_simu()
     # music(np.random.random((7,1000)),cons_uca(0.043),20e3,343,np.arange(-180, 181),np.arange(-1, 31), 1)
 
     # print(np.arange(100))
@@ -408,7 +460,5 @@ if __name__ == '__main__':
     # xx, yy = np.meshgrid(aziang, eleang)
     # scan_angles = np.vstack((xx.reshape(-1, order='F'), yy.reshape(-1, order='F')))
     # pass
-    a = np.array([1,2,3,4,5,6])
-    print(a.reshape((2,3), order='F'))
     # a[0:2] = [2,3]
     # print(a)

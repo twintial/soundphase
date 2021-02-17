@@ -277,9 +277,9 @@ def path_length_change_estimation(data):
 
 
 def demo():
-    # data, fs = load_audio_data(r'D:\experiment\data\2021\毕业设计\soundgestreco\0\0\1.wav', 'wav')
+    data, fs = load_audio_data(r'D:\实验数据\2021\毕设\micarrayspeaker\sjj\gesture6\65.wav', 'wav')
     # data, fs = load_audio_data(r'D:\projects\pyprojects\gesturerecord\micarray\sinusoid2\1.wav', 'wav')
-    data, fs = load_audio_data(r'D:\实验数据\2021\毕设\micarrayspeaker\sjj\gesture1\0.wav', 'wav')
+    # data, fs = load_audio_data(r'D:\projects\pyprojects\gesturerecord\0\0\0.wav', 'wav')
     data1 = data[48000 * 1:, 0].T
     data2 = data[48000 * 1:, 5].T
     # plt.plot(data1)
@@ -293,9 +293,9 @@ def demo():
     plt.show()
     # fc = 17350 + 700 * 0
     step = 350
-    fc = 17350
+    f0 = 17000
     for i in range(8):
-        fc = 17000 + step * i
+        fc = f0 + step * i
         data_filter = butter_bandpass_filter(data1, fc - 150, fc + 150)
         data_filter2 = butter_bandpass_filter(data2, fc - 150, fc + 150)
         # data = data[48000:, 0]
@@ -478,7 +478,8 @@ def analyze_diff():
         plt.show()
 
 
-def beamform_test(data1, fs):
+# angel=[[a,e]]
+def beamform_test(data1, fs, angel):
     r = 0.043  # 43mm
     theta = np.pi / 3
     # 7个麦克风
@@ -491,7 +492,6 @@ def beamform_test(data1, fs):
     # plt.show()
     c = 343
     # angel = np.linspace(-np.pi / 2, np.pi / 2, 181)
-    angel = [[np.pi / 3 * 4, 0]]
     sd = bf.steering_plane_wave(pos, c, angel)
 
     # data, fs = load_audio_data(r'D:\projects\pyprojects\gesturerecord\0\0\0.wav', 'wav')
@@ -499,7 +499,24 @@ def beamform_test(data1, fs):
     y = bf.delay_and_sum(data1, fs, sd)
     return y
 
+# 人声beamform去噪
+def sound_beamforming():
+    data, fs = load_audio_data(r'D:\projects\pyprojects\gesturerecord\0\0\yuan.wav', 'wav')
+    data = data[:, :7].T
+    # beamform
+    a = 0
+    y = beamform_test(data, fs, [[np.deg2rad(a), 0]]).reshape(-1)
+    print(y.shape)
+    # plt.plot(y)
+    # plt.show()
 
+    wf = wave.open(fr'D:\projects\pyprojects\gesturerecord\0\0\yuan_beamform_{a}.wav', 'wb')
+    wf.setnchannels(1)
+    wf.setsampwidth(2)
+    wf.setframerate(fs)
+    y = y.astype(np.int16)
+    wf.writeframes(b''.join(y))
+    wf.close()
 
 # 仿真，查看相位差分的变化情况
 def simu():
@@ -621,7 +638,8 @@ def test():
 
 
 if __name__ == '__main__':
-    # data, fs = load_audio_data(r'0.pcm', 'pcm')
+    # data, fs = load_audio_data(r'D:\projects\pyprojects\gesturerecord\0\0\yuan.wav', 'wav')
+    # data = data[:, :7].T
     # data = data[48000:]
     # for i in range(0, len(data), 512):
     #     path_length_change_estimation(data[i:i+512])
