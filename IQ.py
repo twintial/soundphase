@@ -669,6 +669,9 @@ def split_gesture():
 
 # 实时显示phase
 def real_time_phase():
+    fig = plt.figure()
+    ax = fig.add_subplot(1, 1, 1)
+
     u_p = None
     CHUNK = 2048
     N_CHANNELS = 7
@@ -713,11 +716,11 @@ def real_time_phase():
             I = I[:, CHUNK:CHUNK*2]
             Q = Q[:, CHUNK:CHUNK*2]
             unwrapped_phase = get_phase(I, Q)
+            # 改成实时
             # print(unwrapped_phase.shape)
-            if u_p is None:
-                u_p = unwrapped_phase
-            else:
-                u_p = np.hstack((u_p, unwrapped_phase))
+            u_p = unwrapped_phase if u_p is None else np.hstack((u_p, unwrapped_phase))
+            ax.plot(u_p[0], c='m')
+            plt.pause(0.01)
             # assert unwrapped_phase.shape[1] > 1
             # plt.figure()
             # for i in range(7):
