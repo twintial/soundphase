@@ -213,14 +213,14 @@ def move_average_overlap(data):
     return result
 
 
-def my_move_average_overlap(data, n):
+def my_move_average_overlap(data, win_size=200, overlap=100, axis=-1):
     if len(data.shape) == 1:
         data = data.reshape((1, -1))
-    ret = np.cumsum(data, axis=-1)
-    ret[:, n:] = ret[:, n:] - ret[:, :-n]
-    b = ret[:, n - 1:] / n
-    index = np.arange(0, b.shape[1], 100)
-    return b[:, index]
+    ret = np.cumsum(data, axis=axis)
+    ret[:, win_size:] = ret[:, win_size:] - ret[:, :-win_size]
+    result = ret[:, win_size - 1:] / win_size
+    index = np.arange(0, result.shape[1], overlap)
+    return result[:, index]
 
 
 # 画圈圈，使用时要保证不能有其他图画，不然会有问题
@@ -616,6 +616,122 @@ def simu():
     plt.grid()
     plt.show()
 
+# 分割运动
+# 支持多声道(nChannel, frames)
+# x = chunk_num * chunk_size
+def get_cos_IQ_raw(data: np.ndarray, f, offset, fs=48e3) -> (np.ndarray, np.ndarray):
+    frames = data.shape[1]
+    # offset会一直增长，存在问题
+    times = np.arange(offset, offset + frames) * 1 / fs
+    I_raw = np.cos(2 * np.pi * f * times) * data
+    Q_raw = -np.sin(2 * np.pi * f * times) * data
+    return I_raw, Q_raw
+
+def split_gesture():
+    N_CHANNELS = 7
+    DELAY_TIME = 1
+    NUM_OF_FREQ = 8
+    F0 = 17000
+    STEP = 350  # 每个频率的跨度
+    origin_data, fs = load_audio_data(r'D:\实验数据\2021\毕设\micarrayspeaker\sjj\gesture2\20.wav', 'wav')
+    data = origin_data.reshape((-1, N_CHANNELS + 1))
+    data = data.T  # shape = (num_of_channels, all_frames)
+    data = data[:, int(fs * DELAY_TIME):]
+    data = data[:7, :]
+    for i in range(NUM_OF_FREQ):
+        fc = F0 + i * STEP
+        data_filter = butter_bandpass_filter(data, fc - 150, fc + 150)
+        I_raw, Q_raw = get_cos_IQ_raw(data_filter, fc, 0, fs)
+        # I = my_move_average_overlap(I_raw, 200)
+        # Q = my_move_average_overlap(Q_raw, 200)
+        I = butter_lowpass_filter(I_raw, 200)
+        Q = butter_lowpass_filter(Q_raw, 200)
+        # denoise
+        period = 10
+        decompositionQ = seasonal_decompose(Q.T, period=period, two_sided=False)
+        trendQ = decompositionQ.trend
+        decompositionI = seasonal_decompose(I.T, period=period, two_sided=False)
+        trendI = decompositionI.trend
+
+        trendQ = trendQ.T
+        trendI = trendI.T
+        assert trendI.shape == trendQ.shape
+        trendQ = trendQ[:, period:]
+        trendI = trendI[:, period:]
+        unwrapped_phase = get_phase(trendI, trendQ)
+        assert unwrapped_phase.shape[1] > 1
+        plt.figure()
+        for i in range(7):
+            plt.subplot(2, 4, i+1)
+            plt.plot(unwrapped_phase[i])
+        plt.show()
+# split_gesture()
+
+# 实时显示phase
+def real_time_phase():
+    u_p = None
+    CHUNK = 2048
+    N_CHANNELS = 7
+    DELAY_TIME = 1
+    NUM_OF_FREQ = 8
+    F0 = 17000
+    STEP = 350  # 每个频率的跨度
+    origin_data, fs = load_audio_data(r'D:\实验数据\2021\毕设\micarrayspeaker\sjj\gesture2\20.wav', 'wav')
+    data = origin_data.reshape((-1, N_CHANNELS + 1))
+    data = data.T  # shape = (num_of_channels, all_frames)
+    data = data[:, int(fs * DELAY_TIME):]
+    data = data[:7, :]
+    for start in range(CHUNK, data.shape[1]-CHUNK, CHUNK):
+        data_segment = data[:, start-CHUNK:start+2*CHUNK]
+        for i in range(1):
+            fc = F0 + i * STEP
+            data_filter = butter_bandpass_filter(data_segment, fc - 150, fc + 150)
+            print(start/CHUNK)
+            I_raw, Q_raw = get_cos_IQ_raw(data_filter, fc, start-CHUNK, fs)
+            # print(I_raw.shape)
+            # I = my_move_average_overlap(I_raw, win_size=20, overlap=10)
+            I = butter_lowpass_filter(I_raw, 200)
+            Q = butter_lowpass_filter(Q_raw, 200)
+            # plt.figure()
+            # for i in range(7):
+            #     plt.subplot(2, 4, i + 1)
+            #     plt.plot(I[i][CHUNK:CHUNK*2])
+            # plt.show()
+            # print(I.shape)
+            # # denoise
+            # period = 2
+            # decompositionQ = seasonal_decompose(Q.T, period=period, two_sided=False)
+            # trendQ = decompositionQ.trend
+            # decompositionI = seasonal_decompose(I.T, period=period, two_sided=False)
+            # trendI = decompositionI.trend
+            #
+            # trendQ = trendQ.T
+            # trendI = trendI.T
+            # assert trendI.shape == trendQ.shape
+            # trendQ = trendQ[:, period:]
+            # trendI = trendI[:, period:]
+            I = I[:, CHUNK:CHUNK*2]
+            Q = Q[:, CHUNK:CHUNK*2]
+            unwrapped_phase = get_phase(I, Q)
+            # print(unwrapped_phase.shape)
+            if u_p is None:
+                u_p = unwrapped_phase
+            else:
+                u_p = np.hstack((u_p, unwrapped_phase))
+            # assert unwrapped_phase.shape[1] > 1
+            # plt.figure()
+            # for i in range(7):
+            #     plt.subplot(2, 4, i + 1)
+            #     plt.plot(unwrapped_phase[i])
+            # plt.show()
+    print(u_p.shape)
+    plt.figure()
+    for i in range(7):
+        plt.subplot(2, 4, i + 1)
+        plt.plot(np.unwrap(u_p[i]))
+    plt.show()
+real_time_phase()
+
 
 def test():
     f = 20e3
@@ -638,12 +754,13 @@ def test():
 
 
 if __name__ == '__main__':
+    pass
     # data, fs = load_audio_data(r'D:\projects\pyprojects\gesturerecord\0\0\yuan.wav', 'wav')
     # data = data[:, :7].T
     # data = data[48000:]
     # for i in range(0, len(data), 512):
     #     path_length_change_estimation(data[i:i+512])
-    demo()
+    # demo()
     # test()
     # phasediff_between_mic()
     # analyze_diff()
