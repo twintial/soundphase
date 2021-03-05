@@ -678,6 +678,8 @@ def real_time_phase():
     l_phase, = ax.plot(phase)
     plt.pause(0.01)
 
+    stds = []
+
     u_p = None
     CHUNK = 2048
     N_CHANNELS = 2
@@ -702,48 +704,34 @@ def real_time_phase():
             # I = my_move_average_overlap(I_raw, win_size=20, overlap=10)
             I = butter_lowpass_filter(I_raw, 200)
             Q = butter_lowpass_filter(Q_raw, 200)
-            # plt.figure()
-            # for i in range(7):
-            #     plt.subplot(2, 4, i + 1)
-            #     plt.plot(I[i][CHUNK:CHUNK*2])
-            # plt.show()
-            # print(I.shape)
-            # # denoise
-            # period = 2
-            # decompositionQ = seasonal_decompose(Q.T, period=period, two_sided=False)
-            # trendQ = decompositionQ.trend
-            # decompositionI = seasonal_decompose(I.T, period=period, two_sided=False)
-            # trendI = decompositionI.trend
-            #
-            # trendQ = trendQ.T
-            # trendI = trendI.T
-            # assert trendI.shape == trendQ.shape
-            # trendQ = trendQ[:, period:]
-            # trendI = trendI[:, period:]
+
             I = I[:, CHUNK:CHUNK*2]
             Q = Q[:, CHUNK:CHUNK*2]
             unwrapped_phase = get_phase(I, Q)
             # 改成实时
-            # print(unwrapped_phase.shape)
             u_p = unwrapped_phase if u_p is None else np.hstack((u_p, unwrapped_phase))
-            phase = phase[CHUNK:] + list(unwrapped_phase[0])
-            l_phase.set_ydata(phase)
-            ax.relim()
-            ax.autoscale()
-            ax.figure.canvas.draw()
+
+            # 计算方差
+            std = np.std(unwrapped_phase[0])
+            stds.append(std)
+
+            # phase = phase[CHUNK:] + list(unwrapped_phase[0])
+            # l_phase.set_ydata(phase)
+            # ax.relim()
+            # ax.autoscale()
+            # ax.figure.canvas.draw()
+
             # plt.draw()
             plt.pause(0.001)
-            # assert unwrapped_phase.shape[1] > 1
-            # plt.figure()
-            # for i in range(7):
-            #     plt.subplot(2, 4, i + 1)
-            #     plt.plot(unwrapped_phase[i])
-            # plt.show()
     print(u_p.shape)
     plt.figure()
     for i in range(2):
         plt.subplot(2, 1, i + 1)
         plt.plot(np.unwrap(u_p[i]))
+    plt.pause(0.01)
+
+    plt.figure()
+    plt.plot(stds)
     plt.show()
 real_time_phase()
 
