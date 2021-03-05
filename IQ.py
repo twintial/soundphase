@@ -628,13 +628,14 @@ def get_cos_IQ_raw(data: np.ndarray, f, offset, fs=48e3) -> (np.ndarray, np.ndar
     return I_raw, Q_raw
 
 def split_gesture():
-    N_CHANNELS = 7
+    N_CHANNELS = 2
     DELAY_TIME = 1
     NUM_OF_FREQ = 8
     F0 = 17000
     STEP = 350  # 每个频率的跨度
-    origin_data, fs = load_audio_data(r'D:\实验数据\2021\毕设\micarrayspeaker\sjj\gesture2\20.wav', 'wav')
-    data = origin_data.reshape((-1, N_CHANNELS + 1))
+    origin_data, fs = load_audio_data(r'D:\projects\pyprojects\gesturerecord\0\0\0.wav', 'wav')
+    # origin_data, fs = load_audio_data(r'D:\实验数据\2021\毕设\micarrayspeaker\sjj\gesture2\20.wav', 'wav')
+    data = origin_data.reshape((-1, N_CHANNELS))
     data = data.T  # shape = (num_of_channels, all_frames)
     data = data[:, int(fs * DELAY_TIME):]
     data = data[:7, :]
@@ -661,26 +662,32 @@ def split_gesture():
         unwrapped_phase = get_phase(trendI, trendQ)
         assert unwrapped_phase.shape[1] > 1
         plt.figure()
-        for i in range(7):
-            plt.subplot(2, 4, i+1)
+        for i in range(2):
+            plt.subplot(2, 1, i+1)
             plt.plot(unwrapped_phase[i])
         plt.show()
 # split_gesture()
 
 # 实时显示phase
 def real_time_phase():
-    fig = plt.figure()
-    ax = fig.add_subplot(1, 1, 1)
+    fig, ax = plt.subplots()
+    # ax.set_xlim([0, 48000])
+    # ax.set_ylim([-2, 2])
+    # ax.set_autoscaley_on(True)
+    phase = [None] * 100000
+    l_phase, = ax.plot(phase)
+    plt.pause(0.01)
 
     u_p = None
     CHUNK = 2048
-    N_CHANNELS = 7
+    N_CHANNELS = 2
     DELAY_TIME = 1
     NUM_OF_FREQ = 8
     F0 = 17000
     STEP = 350  # 每个频率的跨度
-    origin_data, fs = load_audio_data(r'D:\实验数据\2021\毕设\micarrayspeaker\sjj\gesture2\20.wav', 'wav')
-    data = origin_data.reshape((-1, N_CHANNELS + 1))
+    # origin_data, fs = load_audio_data(r'D:\实验数据\2021\毕设\micarrayspeaker\sjj\gesture2\20.wav', 'wav')
+    origin_data, fs = load_audio_data(r'D:\projects\pyprojects\gestrecodemo\realtimesys\test.wav', 'wav')
+    data = origin_data.reshape((-1, N_CHANNELS))
     data = data.T  # shape = (num_of_channels, all_frames)
     data = data[:, int(fs * DELAY_TIME):]
     data = data[:7, :]
@@ -719,8 +726,13 @@ def real_time_phase():
             # 改成实时
             # print(unwrapped_phase.shape)
             u_p = unwrapped_phase if u_p is None else np.hstack((u_p, unwrapped_phase))
-            ax.plot(u_p[0], c='m')
-            plt.pause(0.01)
+            phase = phase[CHUNK:] + list(unwrapped_phase[0])
+            l_phase.set_ydata(phase)
+            ax.relim()
+            ax.autoscale()
+            ax.figure.canvas.draw()
+            # plt.draw()
+            plt.pause(0.001)
             # assert unwrapped_phase.shape[1] > 1
             # plt.figure()
             # for i in range(7):
@@ -729,8 +741,8 @@ def real_time_phase():
             # plt.show()
     print(u_p.shape)
     plt.figure()
-    for i in range(7):
-        plt.subplot(2, 4, i + 1)
+    for i in range(2):
+        plt.subplot(2, 1, i + 1)
         plt.plot(np.unwrap(u_p[i]))
     plt.show()
 real_time_phase()
