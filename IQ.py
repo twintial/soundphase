@@ -674,8 +674,11 @@ def real_time_phase():
     # ax.set_xlim([0, 48000])
     # ax.set_ylim([-2, 2])
     # ax.set_autoscaley_on(True)
-    phase = [None] * 100000
+    max_frame = 100000
+    phase = [0] * max_frame
     l_phase, = ax.plot(phase)
+    motion_start_line = ax.axvline(0, color='r')
+    motion_stop_line = ax.axvline(0, color='g')
     plt.pause(0.01)
 
     stds = []
@@ -687,6 +690,18 @@ def real_time_phase():
     NUM_OF_FREQ = 8
     F0 = 17000
     STEP = 350  # 每个频率的跨度
+
+    # 运动检测
+    THRESHOLD = 0.006  # 运动判断阈值
+    motion_start_index = -1
+    motion_stop_index = -1
+    motion_start = False
+    lower_than_threshold_count = 0  # 超过3次即运动停止
+    higher_than_threshold_count = 0  # 超过3次即运动开始
+
+    # 为测试添加的
+    motion_start_index_list = []
+    motion_stop_index_list = []
     # origin_data, fs = load_audio_data(r'D:\实验数据\2021\毕设\micarrayspeaker\sjj\gesture2\20.wav', 'wav')
     origin_data, fs = load_audio_data(r'D:\projects\pyprojects\gestrecodemo\realtimesys\test.wav', 'wav')
     data = origin_data.reshape((-1, N_CHANNELS))
@@ -698,7 +713,6 @@ def real_time_phase():
         for i in range(1):
             fc = F0 + i * STEP
             data_filter = butter_bandpass_filter(data_segment, fc - 150, fc + 150)
-            print(start/CHUNK)
             I_raw, Q_raw = get_cos_IQ_raw(data_filter, fc, start-CHUNK, fs)
             # print(I_raw.shape)
             # I = my_move_average_overlap(I_raw, win_size=20, overlap=10)
@@ -708,18 +722,42 @@ def real_time_phase():
             I = I[:, CHUNK:CHUNK*2]
             Q = Q[:, CHUNK:CHUNK*2]
             unwrapped_phase = get_phase(I, Q)
-            # 改成实时
             u_p = unwrapped_phase if u_p is None else np.hstack((u_p, unwrapped_phase))
 
-            # 计算方差
+            # 运动判断
             std = np.std(unwrapped_phase[0])
+            if motion_start_index > 0:
+                motion_start_index -= CHUNK
+            if motion_stop_index > 0:
+                motion_stop_index -= CHUNK
+
+            if motion_start:
+                if std < THRESHOLD:
+                    lower_than_threshold_count += 1
+                    if lower_than_threshold_count > 3:
+                        motion_stop_index_list.append(u_p.shape[1] - CHUNK * (lower_than_threshold_count - 2))
+                        motion_stop_index = max_frame - CHUNK * (lower_than_threshold_count - 2)
+                        motion_start = False
+                        lower_than_threshold_count = 0
+            else:
+                if std > THRESHOLD:
+                    higher_than_threshold_count += 1
+                    if higher_than_threshold_count > 3:
+                        motion_start_index_list.append(u_p.shape[1] - CHUNK * (higher_than_threshold_count + 2))
+                        motion_start_index = max_frame - CHUNK * (higher_than_threshold_count + 2)
+                        motion_start = True
+                        higher_than_threshold_count = 0
+
+            motion_start_line.set_xdata(motion_start_index)
+            motion_stop_line.set_xdata(motion_stop_index)
             stds.append(std)
 
-            # phase = phase[CHUNK:] + list(unwrapped_phase[0])
-            # l_phase.set_ydata(phase)
-            # ax.relim()
-            # ax.autoscale()
-            # ax.figure.canvas.draw()
+            # 画图
+            phase = phase[CHUNK:] + list(unwrapped_phase[0])
+            l_phase.set_ydata(phase)
+            ax.relim()
+            ax.autoscale()
+            ax.figure.canvas.draw()
 
             # plt.draw()
             plt.pause(0.001)
@@ -728,10 +766,15 @@ def real_time_phase():
     for i in range(2):
         plt.subplot(2, 1, i + 1)
         plt.plot(np.unwrap(u_p[i]))
+        for s in motion_start_index_list:
+            plt.axvline(s, color='r')
+        for s in motion_stop_index_list:
+            plt.axvline(s, color='g')
     plt.pause(0.01)
 
     plt.figure()
     plt.plot(stds)
+    plt.axhline(THRESHOLD)
     plt.show()
 real_time_phase()
 
