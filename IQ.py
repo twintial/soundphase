@@ -3,6 +3,7 @@ from scipy.fftpack import fft, fftfreq
 import matplotlib.pyplot as plt
 from scipy.signal import lfilter, butter, find_peaks_cwt, find_peaks, normalize, filtfilt
 from scipy import signal
+
 from unwrap import *
 import wave
 from statsmodels.tsa.seasonal import seasonal_decompose
@@ -670,6 +671,11 @@ def split_gesture():
 
 # 实时显示phase
 def real_time_phase():
+    # 加载模型
+    from tensorflow.keras import models
+    model_file = r'D:\projects\pyprojects\gestrecodemo\nn\models\mic_speaker_phase_234_5.h5'
+    model: models.Sequential = models.load_model(model_file)
+
     fig, ax = plt.subplots()
     # ax.set_xlim([0, 48000])
     # ax.set_ylim([-2, 2])
@@ -691,7 +697,7 @@ def real_time_phase():
     F0 = 17000
     STEP = 350  # 每个频率的跨度
 
-    # 运动检测
+    # 运动检测参数
     THRESHOLD = 0.006  # 运动判断阈值
     motion_start_index = -1
     motion_stop_index = -1
@@ -723,6 +729,8 @@ def real_time_phase():
             Q = Q[:, CHUNK:CHUNK*2]
             unwrapped_phase = get_phase(I, Q)
             u_p = unwrapped_phase if u_p is None else np.hstack((u_p, unwrapped_phase))
+            # 画图对象
+            phase = phase[CHUNK:] + list(unwrapped_phase[0])
 
             # 运动判断
             std = np.std(unwrapped_phase[0])
@@ -753,12 +761,10 @@ def real_time_phase():
             stds.append(std)
 
             # 画图
-            phase = phase[CHUNK:] + list(unwrapped_phase[0])
             l_phase.set_ydata(phase)
             ax.relim()
             ax.autoscale()
             ax.figure.canvas.draw()
-
             # plt.draw()
             plt.pause(0.001)
     print(u_p.shape)
