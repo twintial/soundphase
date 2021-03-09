@@ -669,12 +669,12 @@ def split_gesture():
         plt.show()
 # split_gesture()
 
+from tensorflow.keras import models
+model_file = r'D:\projects\pyprojects\gestrecodemo\nn\models\mic_speaker_phase_234_5.h5'
+model: models.Sequential = models.load_model(model_file)
 # 实时显示phase
 def real_time_phase():
     # 加载模型
-    # from tensorflow.keras import models
-    # model_file = r'D:\projects\pyprojects\gestrecodemo\nn\models\mic_speaker_phase_234_5.h5'
-    # model: models.Sequential = models.load_model(model_file)
 
     fig, ax = plt.subplots()
     # ax.set_xlim([0, 48000])
@@ -808,6 +808,8 @@ def real_time_phase():
     plt.axhline(THRESHOLD)
     plt.show()
 def gesture_detection(gesture_frames):
+    import time
+    t1 = time.time()
     unwrapped_phase_list = []
     N_CHANNELS = 2
     DELAY_TIME = 1
@@ -815,7 +817,6 @@ def gesture_detection(gesture_frames):
     F0 = 17000
     STEP = 350  # 每个频率的跨度
     fs = 48000
-
     for i in range(NUM_OF_FREQ):
         fc = F0 + i * STEP
         data_filter = butter_bandpass_filter(gesture_frames, fc - 150, fc + 150)
@@ -850,7 +851,27 @@ def gesture_detection(gesture_frames):
         # plt.show()
         unwrapped_phase_list.append(np.diff(np.diff(unwrapped_phase)))
     merged_u_p = np.array(unwrapped_phase_list).reshape((NUM_OF_FREQ * N_CHANNELS * 2, -1))
-    print(merged_u_p.shape)
+    # 仿造（之后删除）
+    merged_u_p_fake = np.tile(merged_u_p, (3,1))
+    merged_u_p_fake = np.vstack((merged_u_p_fake, merged_u_p[:16, :]))
+    # zero padding
+    mean_len = 777
+    detla_len = merged_u_p_fake.shape[1] - mean_len
+    if detla_len > 0:
+        merged_u_p_fake = merged_u_p_fake[:, detla_len:]
+    elif detla_len < 0:
+        left_zero_padding_len = abs(detla_len) // 2
+        right_zero_padding_len = abs(detla_len) - left_zero_padding_len
+        left_zero_padding = np.zeros((NUM_OF_FREQ * 7 * 2, left_zero_padding_len))
+        right_zero_padding = np.zeros((NUM_OF_FREQ * 7 * 2, right_zero_padding_len))
+        merged_u_p_fake = np.hstack((left_zero_padding, merged_u_p_fake, right_zero_padding))
+    y_predict = model.predict(merged_u_p_fake.reshape((1, merged_u_p_fake.shape[0], merged_u_p_fake.shape[1], 1)))
+    label = ['握紧', '张开', '左滑', '右滑', '上滑', '下滑', '前推', '后推', '顺时针转圈', '逆时针转圈']
+    print(np.argmax(y_predict[0]))
+    print(label[np.argmax(y_predict[0])])
+    t2 = time.time()
+    print(f"use time:{t2-t1}")
+
 real_time_phase()
 
 
