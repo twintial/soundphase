@@ -672,9 +672,9 @@ def split_gesture():
 # 实时显示phase
 def real_time_phase():
     # 加载模型
-    from tensorflow.keras import models
-    model_file = r'D:\projects\pyprojects\gestrecodemo\nn\models\mic_speaker_phase_234_5.h5'
-    model: models.Sequential = models.load_model(model_file)
+    # from tensorflow.keras import models
+    # model_file = r'D:\projects\pyprojects\gestrecodemo\nn\models\mic_speaker_phase_234_5.h5'
+    # model: models.Sequential = models.load_model(model_file)
 
     fig, ax = plt.subplots()
     # ax.set_xlim([0, 48000])
@@ -691,6 +691,7 @@ def real_time_phase():
 
     u_p = None
     CHUNK = 2048
+    OFFSET = 2048  # 800和2048一模一样
     N_CHANNELS = 2
     DELAY_TIME = 1
     NUM_OF_FREQ = 8
@@ -698,12 +699,15 @@ def real_time_phase():
     STEP = 350  # 每个频率的跨度
 
     # 运动检测参数
-    THRESHOLD = 0.006  # 运动判断阈值
+    THRESHOLD = 0.008  # 运动判断阈值
     motion_start_index = -1
     motion_stop_index = -1
     motion_start = False
     lower_than_threshold_count = 0  # 超过3次即运动停止
     higher_than_threshold_count = 0  # 超过3次即运动开始
+
+    # 手势出现数据
+    gesture_data = None
 
     # 为测试添加的
     motion_start_index_list = []
@@ -712,61 +716,66 @@ def real_time_phase():
     origin_data, fs = load_audio_data(r'D:\projects\pyprojects\gestrecodemo\realtimesys\test.wav', 'wav')
     data = origin_data.reshape((-1, N_CHANNELS))
     data = data.T  # shape = (num_of_channels, all_frames)
-    data = data[:, int(fs * DELAY_TIME):]
+    data = data[:, int(fs * DELAY_TIME):int(fs * 8)]
     data = data[:7, :]
-    for start in range(CHUNK, data.shape[1]-CHUNK, CHUNK):
-        data_segment = data[:, start-CHUNK:start+2*CHUNK]
-        for i in range(1):
-            fc = F0 + i * STEP
-            data_filter = butter_bandpass_filter(data_segment, fc - 150, fc + 150)
-            I_raw, Q_raw = get_cos_IQ_raw(data_filter, fc, start-CHUNK, fs)
-            # print(I_raw.shape)
-            # I = my_move_average_overlap(I_raw, win_size=20, overlap=10)
-            I = butter_lowpass_filter(I_raw, 200)
-            Q = butter_lowpass_filter(Q_raw, 200)
+    for start in range(CHUNK, data.shape[1]-CHUNK*2, CHUNK):
+        data_segment = data[:, start-OFFSET:start+CHUNK+OFFSET]
+        # 只取第一段频率的相位，为了画图and运动检测
+        fc = F0
+        data_filter = butter_bandpass_filter(data_segment, fc - 150, fc + 150)
+        I_raw, Q_raw = get_cos_IQ_raw(data_filter, fc, start - OFFSET, fs)
+        # print(I_raw.shape)
+        # I = my_move_average_overlap(I_raw, win_size=20, overlap=10)
+        I = butter_lowpass_filter(I_raw, 200)
+        Q = butter_lowpass_filter(Q_raw, 200)
+        I = I[:, OFFSET:-OFFSET]
+        Q = Q[:, OFFSET:-OFFSET]
+        unwrapped_phase = get_phase(I, Q)
+        u_p = unwrapped_phase if u_p is None else np.hstack((u_p, unwrapped_phase))
+        # 画图对象，用I/Q没有区别
+        phase = phase[CHUNK:] + list(unwrapped_phase[0])
 
-            I = I[:, CHUNK:CHUNK*2]
-            Q = Q[:, CHUNK:CHUNK*2]
-            unwrapped_phase = get_phase(I, Q)
-            u_p = unwrapped_phase if u_p is None else np.hstack((u_p, unwrapped_phase))
-            # 画图对象
-            phase = phase[CHUNK:] + list(unwrapped_phase[0])
+        # 运动判断
+        std = np.std(unwrapped_phase[0])
+        if motion_start_index > 0:
+            motion_start_index -= CHUNK
+        if motion_stop_index > 0:
+            motion_stop_index -= CHUNK
+        # 连续三次大于/小于阈值
+        if motion_start:
+            if std < THRESHOLD:
+                lower_than_threshold_count += 1
+                if lower_than_threshold_count >= 3:
+                    motion_stop_index_list.append(u_p.shape[1] - CHUNK * (lower_than_threshold_count - 2))
+                    motion_stop_index = max_frame - CHUNK * (lower_than_threshold_count - 2)
+                    motion_start = False
+                    lower_than_threshold_count = 0
+                    # 运动停止，手势判断
 
-            # 运动判断
-            std = np.std(unwrapped_phase[0])
-            if motion_start_index > 0:
-                motion_start_index -= CHUNK
-            if motion_stop_index > 0:
-                motion_stop_index -= CHUNK
-
-            if motion_start:
-                if std < THRESHOLD:
-                    lower_than_threshold_count += 1
-                    if lower_than_threshold_count > 3:
-                        motion_stop_index_list.append(u_p.shape[1] - CHUNK * (lower_than_threshold_count - 2))
-                        motion_stop_index = max_frame - CHUNK * (lower_than_threshold_count - 2)
-                        motion_start = False
-                        lower_than_threshold_count = 0
             else:
-                if std > THRESHOLD:
-                    higher_than_threshold_count += 1
-                    if higher_than_threshold_count > 3:
-                        motion_start_index_list.append(u_p.shape[1] - CHUNK * (higher_than_threshold_count + 2))
-                        motion_start_index = max_frame - CHUNK * (higher_than_threshold_count + 2)
-                        motion_start = True
-                        higher_than_threshold_count = 0
+                lower_than_threshold_count = 0
+        else:
+            if std > THRESHOLD:
+                higher_than_threshold_count += 1
+                if higher_than_threshold_count >= 3:
+                    motion_start_index_list.append(u_p.shape[1] - CHUNK * (higher_than_threshold_count + 2))
+                    motion_start_index = max_frame - CHUNK * (higher_than_threshold_count + 2)
+                    motion_start = True
+                    higher_than_threshold_count = 0
+            else:
+                higher_than_threshold_count = 0
 
-            motion_start_line.set_xdata(motion_start_index)
-            motion_stop_line.set_xdata(motion_stop_index)
-            stds.append(std)
+        motion_start_line.set_xdata(motion_start_index)
+        motion_stop_line.set_xdata(motion_stop_index)
+        stds.append(std)
 
-            # 画图
-            l_phase.set_ydata(phase)
-            ax.relim()
-            ax.autoscale()
-            ax.figure.canvas.draw()
-            # plt.draw()
-            plt.pause(0.001)
+        # 画图
+        l_phase.set_ydata(phase)
+        ax.relim()
+        ax.autoscale()
+        ax.figure.canvas.draw()
+        # plt.draw()
+        plt.pause(0.001)
     print(u_p.shape)
     plt.figure()
     for i in range(2):
@@ -779,7 +788,7 @@ def real_time_phase():
     plt.pause(0.01)
 
     plt.figure()
-    plt.plot(stds)
+    plt.scatter(np.arange(len(stds)), stds, s=1)
     plt.axhline(THRESHOLD)
     plt.show()
 real_time_phase()
