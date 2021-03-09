@@ -674,8 +674,6 @@ model_file = r'D:\projects\pyprojects\gestrecodemo\nn\models\mic_speaker_phase_2
 model: models.Sequential = models.load_model(model_file)
 # 实时显示phase
 def real_time_phase():
-    # 加载模型
-
     fig, ax = plt.subplots()
     # ax.set_xlim([0, 48000])
     # ax.set_ylim([-2, 2])
@@ -764,7 +762,9 @@ def real_time_phase():
                         # !!!!!，如何frame_len大于max_frame会出现问题，不过很容易修改
                         gesture_frames_len = motion_stop_index - motion_start_index
                         gesture_frames = frames_int[:, -gesture_frames_len:]
-                        gesture_detection(gesture_frames)
+                        # 可改为多线程,快了0.05s左右
+                        # gesture_detection(gesture_frames)
+                        gesture_detection_multithread(gesture_frames)
                 else:
                     lower_than_threshold_count = 0
             else:
@@ -871,6 +871,76 @@ def gesture_detection(gesture_frames):
     print(label[np.argmax(y_predict[0])])
     t2 = time.time()
     print(f"use time:{t2-t1}")
+def gesture_detection_multithread(gesture_frames):
+    from concurrent.futures import ThreadPoolExecutor
+    t1 = time.time()
+
+    N_CHANNELS = 2
+    DELAY_TIME = 1
+    NUM_OF_FREQ = 8
+    F0 = 17000
+    STEP = 350  # 每个频率的跨度
+    fs = 48000
+
+    unwrapped_phase_list = [None] * NUM_OF_FREQ * 2
+    def get_phase_and_diff(i):
+        fc = F0 + i * STEP
+        data_filter = butter_bandpass_filter(gesture_frames, fc - 150, fc + 150)
+        I_raw, Q_raw = get_cos_IQ_raw(data_filter, fc, fs)
+        # 滤波+下采样
+        I = my_move_average_overlap(I_raw)
+        Q = my_move_average_overlap(Q_raw)
+        # denoise
+        decompositionQ = seasonal_decompose(Q.T, period=10, two_sided=False)
+        trendQ = decompositionQ.trend
+        decompositionI = seasonal_decompose(I.T, period=10, two_sided=False)
+        trendI = decompositionI.trend
+
+        trendQ = trendQ.T
+        trendI = trendI.T
+
+        assert trendI.shape == trendQ.shape
+        if len(trendI.shape) == 1:
+            trendI = trendI.reshape((1, -1))
+            trendQ = trendQ.reshape((1, -1))
+
+        trendQ = trendQ[:, 10:]
+        trendI = trendI[:, 10:]
+
+        unwrapped_phase = get_phase(trendI, trendQ)  # 这里的展开目前没什么效果
+        # plt.plot(unwrapped_phase[0])
+        # plt.show()
+        assert unwrapped_phase.shape[1] > 1
+        # 用diff，和两次diff
+        unwrapped_phase_list[2*i] = np.diff(unwrapped_phase)[:, :-1]
+        # plt.plot(np.diff(unwrapped_phase).reshape(-1))
+        # plt.show()
+        unwrapped_phase_list[2*i+1] = (np.diff(np.diff(unwrapped_phase)))
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        pool.map(get_phase_and_diff, [i for i in range(NUM_OF_FREQ)])
+
+    merged_u_p = np.array(unwrapped_phase_list).reshape((NUM_OF_FREQ * N_CHANNELS * 2, -1))
+    # 仿造（之后删除）
+    merged_u_p_fake = np.tile(merged_u_p, (3,1))
+    merged_u_p_fake = np.vstack((merged_u_p_fake, merged_u_p[:16, :]))
+    # zero padding
+    mean_len = 777
+    detla_len = merged_u_p_fake.shape[1] - mean_len
+    if detla_len > 0:
+        merged_u_p_fake = merged_u_p_fake[:, detla_len:]
+    elif detla_len < 0:
+        left_zero_padding_len = abs(detla_len) // 2
+        right_zero_padding_len = abs(detla_len) - left_zero_padding_len
+        left_zero_padding = np.zeros((NUM_OF_FREQ * 7 * 2, left_zero_padding_len))
+        right_zero_padding = np.zeros((NUM_OF_FREQ * 7 * 2, right_zero_padding_len))
+        merged_u_p_fake = np.hstack((left_zero_padding, merged_u_p_fake, right_zero_padding))
+    y_predict = model.predict(merged_u_p_fake.reshape((1, merged_u_p_fake.shape[0], merged_u_p_fake.shape[1], 1)))
+    label = ['握紧', '张开', '左滑', '右滑', '上滑', '下滑', '前推', '后推', '顺时针转圈', '逆时针转圈']
+    print(np.argmax(y_predict[0]))
+    print(label[np.argmax(y_predict[0])])
+    t2 = time.time()
+    print(f"use time:{t2-t1}")
+
 
 real_time_phase()
 
