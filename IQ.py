@@ -691,7 +691,8 @@ def real_time_phase():
 
     u_p = None
     CHUNK = 2048
-    OFFSET = 2048  # 800和2048一模一样
+    OFFSET_FOR_FLITER = 2000  # 和get_cos_IQ_raw的offset有关，要小于CHUNK
+    OFFSET_FOR_IQ = CHUNK
     N_CHANNELS = 2
     DELAY_TIME = 1
     NUM_OF_FREQ = 8
@@ -701,10 +702,12 @@ def real_time_phase():
     # 运动检测参数
     THRESHOLD = 0.008  # 运动判断阈值
     motion_start_index = -1
+    motion_start_index_constant = -1
     motion_stop_index = -1
     motion_start = False
     lower_than_threshold_count = 0  # 超过3次即运动停止
     higher_than_threshold_count = 0  # 超过3次即运动开始
+    pre_frame = 4
 
     # 手势出现数据
     gesture_data = None
@@ -716,66 +719,79 @@ def real_time_phase():
     origin_data, fs = load_audio_data(r'D:\projects\pyprojects\gestrecodemo\realtimesys\test.wav', 'wav')
     data = origin_data.reshape((-1, N_CHANNELS))
     data = data.T  # shape = (num_of_channels, all_frames)
-    data = data[:, int(fs * DELAY_TIME):int(fs * 8)]
+    data = data[:, int(fs * DELAY_TIME):]
     data = data[:7, :]
+
+    frames_int = None
     for start in range(CHUNK, data.shape[1]-CHUNK*2, CHUNK):
-        data_segment = data[:, start-OFFSET:start+CHUNK+OFFSET]
-        # 只取第一段频率的相位，为了画图and运动检测
-        fc = F0
-        data_filter = butter_bandpass_filter(data_segment, fc - 150, fc + 150)
-        I_raw, Q_raw = get_cos_IQ_raw(data_filter, fc, start - OFFSET, fs)
-        # print(I_raw.shape)
-        # I = my_move_average_overlap(I_raw, win_size=20, overlap=10)
-        I = butter_lowpass_filter(I_raw, 200)
-        Q = butter_lowpass_filter(Q_raw, 200)
-        I = I[:, OFFSET:-OFFSET]
-        Q = Q[:, OFFSET:-OFFSET]
-        unwrapped_phase = get_phase(I, Q)
-        u_p = unwrapped_phase if u_p is None else np.hstack((u_p, unwrapped_phase))
-        # 画图对象，用I/Q没有区别
-        phase = phase[CHUNK:] + list(unwrapped_phase[0])
+        in_data = data[:, start-CHUNK:start]
+        frames_int = in_data if frames_int is None else np.hstack((frames_int, in_data))
+        if frames_int.shape[1] > 3 * CHUNK:
+            data_segment = frames_int[:, -2*CHUNK-OFFSET_FOR_FLITER:-CHUNK+OFFSET_FOR_FLITER]
+            assert data_segment.shape[1] == CHUNK + 2*OFFSET_FOR_FLITER
+            # 只取第一段频率的相位，为了画图and运动检测
+            fc = F0
+            data_filter = butter_bandpass_filter(data_segment, fc - 150, fc + 150)
+            I_raw, Q_raw = get_cos_IQ_raw(data_filter, fc, OFFSET_FOR_IQ - OFFSET_FOR_FLITER, fs)
+            # print(I_raw.shape)
+            # I = my_move_average_overlap(I_raw, win_size=20, overlap=10)
+            I = butter_lowpass_filter(I_raw, 200)
+            Q = butter_lowpass_filter(Q_raw, 200)
+            I = I[:, OFFSET_FOR_FLITER:-OFFSET_FOR_FLITER]
+            Q = Q[:, OFFSET_FOR_FLITER:-OFFSET_FOR_FLITER]
+            unwrapped_phase = get_phase(I, Q)
+            u_p = unwrapped_phase if u_p is None else np.hstack((u_p, unwrapped_phase))
+            # 画图对象，用I/Q没有区别
+            phase = phase[CHUNK:] + list(unwrapped_phase[0])
 
-        # 运动判断
-        std = np.std(unwrapped_phase[0])
-        if motion_start_index > 0:
-            motion_start_index -= CHUNK
-        if motion_stop_index > 0:
-            motion_stop_index -= CHUNK
-        # 连续三次大于/小于阈值
-        if motion_start:
-            if std < THRESHOLD:
-                lower_than_threshold_count += 1
-                if lower_than_threshold_count >= 3:
-                    motion_stop_index_list.append(u_p.shape[1] - CHUNK * (lower_than_threshold_count - 2))
-                    motion_stop_index = max_frame - CHUNK * (lower_than_threshold_count - 2)
-                    motion_start = False
+            # 运动判断
+            std = np.std(unwrapped_phase[0])
+            if motion_start_index > 0:
+                motion_start_index -= CHUNK
+            if motion_stop_index > 0:
+                motion_stop_index -= CHUNK
+            # 连续三次大于/小于阈值
+            if motion_start:
+                if std < THRESHOLD:
+                    lower_than_threshold_count += 1
+                    if lower_than_threshold_count >= 4:
+                        # 运动开始，在前4CHUNK阈值已经低于，另外减去pre_frame*CHUNK的提前量(pre_frame大于lower_than_threshold_count则多出来的部分无法取到)
+                        motion_stop_index_list.append(u_p.shape[1] - CHUNK * (lower_than_threshold_count - pre_frame))
+                        motion_stop_index = max_frame - CHUNK * (lower_than_threshold_count - pre_frame)
+                        motion_start = False
+                        lower_than_threshold_count = 0
+                        # 运动停止，手势判断
+                        # !!!!!，如何frame_len大于max_frame会出现问题，不过很容易修改
+                        gesture_frames_len = motion_stop_index - motion_start_index
+                        gesture_frames = frames_int[:, -gesture_frames_len:]
+                        gesture_detection(gesture_frames)
+                else:
                     lower_than_threshold_count = 0
-                    # 运动停止，手势判断
-
             else:
-                lower_than_threshold_count = 0
-        else:
-            if std > THRESHOLD:
-                higher_than_threshold_count += 1
-                if higher_than_threshold_count >= 3:
-                    motion_start_index_list.append(u_p.shape[1] - CHUNK * (higher_than_threshold_count + 2))
-                    motion_start_index = max_frame - CHUNK * (higher_than_threshold_count + 2)
-                    motion_start = True
+                if std > THRESHOLD:
+                    higher_than_threshold_count += 1
+                    if higher_than_threshold_count >= 4:
+                        # 运动开始，在前4CHUNK阈值已经超过，另外减去pre_frame*CHUNK的提前量
+                        motion_start_index_list.append(u_p.shape[1] - CHUNK * (higher_than_threshold_count + pre_frame))
+                        motion_start_index = max_frame - CHUNK * (higher_than_threshold_count + pre_frame)
+                        motion_start = True
+                        higher_than_threshold_count = 0
+                else:
                     higher_than_threshold_count = 0
-            else:
-                higher_than_threshold_count = 0
 
-        motion_start_line.set_xdata(motion_start_index)
-        motion_stop_line.set_xdata(motion_stop_index)
-        stds.append(std)
+            motion_start_line.set_xdata(motion_start_index)
+            motion_stop_line.set_xdata(motion_stop_index)
+            stds.append(std)
 
-        # 画图
-        l_phase.set_ydata(phase)
-        ax.relim()
-        ax.autoscale()
-        ax.figure.canvas.draw()
-        # plt.draw()
-        plt.pause(0.001)
+            # 画图
+            l_phase.set_ydata(phase)
+            ax.relim()
+            ax.autoscale()
+            ax.figure.canvas.draw()
+            # plt.draw()
+            plt.pause(0.001)
+            OFFSET_FOR_IQ += CHUNK
+
     print(u_p.shape)
     plt.figure()
     for i in range(2):
@@ -791,6 +807,50 @@ def real_time_phase():
     plt.scatter(np.arange(len(stds)), stds, s=1)
     plt.axhline(THRESHOLD)
     plt.show()
+def gesture_detection(gesture_frames):
+    unwrapped_phase_list = []
+    N_CHANNELS = 2
+    DELAY_TIME = 1
+    NUM_OF_FREQ = 8
+    F0 = 17000
+    STEP = 350  # 每个频率的跨度
+    fs = 48000
+
+    for i in range(NUM_OF_FREQ):
+        fc = F0 + i * STEP
+        data_filter = butter_bandpass_filter(gesture_frames, fc - 150, fc + 150)
+        I_raw, Q_raw = get_cos_IQ_raw(data_filter, fc, fs)
+        # 滤波+下采样
+        I = my_move_average_overlap(I_raw)
+        Q = my_move_average_overlap(Q_raw)
+        # denoise
+        decompositionQ = seasonal_decompose(Q.T, period=10, two_sided=False)
+        trendQ = decompositionQ.trend
+        decompositionI = seasonal_decompose(I.T, period=10, two_sided=False)
+        trendI = decompositionI.trend
+
+        trendQ = trendQ.T
+        trendI = trendI.T
+
+        assert trendI.shape == trendQ.shape
+        if len(trendI.shape) == 1:
+            trendI = trendI.reshape((1, -1))
+            trendQ = trendQ.reshape((1, -1))
+
+        trendQ = trendQ[:, 10:]
+        trendI = trendI[:, 10:]
+
+        unwrapped_phase = get_phase(trendI, trendQ)  # 这里的展开目前没什么效果
+        # plt.plot(unwrapped_phase[0])
+        # plt.show()
+        assert unwrapped_phase.shape[1] > 1
+        # 用diff，和两次diff
+        unwrapped_phase_list.append(np.diff(unwrapped_phase)[:, :-1])
+        # plt.plot(np.diff(unwrapped_phase).reshape(-1))
+        # plt.show()
+        unwrapped_phase_list.append(np.diff(np.diff(unwrapped_phase)))
+    merged_u_p = np.array(unwrapped_phase_list).reshape((NUM_OF_FREQ * N_CHANNELS * 2, -1))
+    print(merged_u_p.shape)
 real_time_phase()
 
 
