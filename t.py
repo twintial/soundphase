@@ -1,3 +1,7 @@
-unwrapped_phase_list = [2] * 8
-unwrapped_phase_list[0] = 1
-print(unwrapped_phase_list)
+import numpy as np
+a = np.array([[1,2,3],[1,2,3]])
+a = a.copy()
+b = a[0,0:2]
+b = b + 1
+print(a)
+print(b)

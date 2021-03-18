@@ -328,7 +328,7 @@ def move_simu():
         mic_receive_signals += o_phase
     # plt.figure()
     plt.subplot(2,2,3)
-    plt.plot(np.unwrap(np.angle(mic_receive_signals[0])))
+    plt.plot(np.diff(np.unwrap(np.angle(mic_receive_signals[0]))))
     plt.title("mixed phase")
     # plt.show()
 
@@ -347,7 +347,7 @@ def move_simu():
 
     # plt.figure()
     plt.subplot(2,2,4)
-    plt.plot(np.unwrap(np.angle(beamformed_signal)))
+    plt.plot(np.diff(np.unwrap(np.angle(beamformed_signal))))
     plt.title("beamformed phase")
     plt.show()
 

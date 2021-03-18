@@ -278,11 +278,33 @@ def path_length_change_estimation(data):
 
 
 def demo():
-    data, fs = load_audio_data(r'D:\实验数据\2021\毕设\micarrayspeaker\sjj\gesture6\65.wav', 'wav')
+    def pearsonCroCor(data, sample, mode=0):
+        if mode == 2:
+            corresult = np.correlate(data, sample)
+        else:
+            corresult = np.zeros(data.size - sample.size + 1, dtype=np.complex128)
+            # slide the data, every time pick sample.size elements to do pearson with sample
+            i = 0
+            sample_size = sample.size
+            test_rel = np.correlate(sample, sample)
+            while i + sample_size <= data.size:
+                if mode == 1:
+                    corresult[i] = np.correlate(data[i:i + sample_size], sample)[0]
+                else:
+                    # corresult[i]=pearsonr(data[i:i+sample_size],sample)[0]
+                    corresult[i] = np.corrcoef(data[i:i + sample_size], sample)[0][1]
+
+                i += 1
+        return np.abs(corresult)
+    # data, fs = load_audio_data(r'D:\实验数据\2021\毕设\micarrayspeaker\sjj\gesture6\65.wav', 'wav')
     # data, fs = load_audio_data(r'D:\projects\pyprojects\gesturerecord\micarray\sinusoid2\1.wav', 'wav')
-    # data, fs = load_audio_data(r'D:\projects\pyprojects\gesturerecord\0\0\0.wav', 'wav')
+    data, fs = load_audio_data(r'D:\projects\pyprojects\gesturerecord\location\0\0.wav', 'wav')
     data1 = data[48000 * 1:, 0].T
-    data2 = data[48000 * 1:, 5].T
+    data2 = data[48000 * 1:, 2].T
+    # plt.plot(data2)
+    # plt.show()
+    normalized_signal_fft(data1, figure=True)
+
     # plt.plot(data1)
     # plt.show()
     # data, fs = load_audio_data(r'D:\projects\pyprojects\andriodfaceidproject\temp\word1\shenjunjie\0.pcm', 'pcm')
@@ -300,10 +322,11 @@ def demo():
         data_filter = butter_bandpass_filter(data1, fc - 150, fc + 150)
         data_filter2 = butter_bandpass_filter(data2, fc - 150, fc + 150)
         # data = data[48000:, 0]
-        normalized_signal_fft(data_filter, figure=True, xlim=(15e3, 23e3))
-        plt.show()
+        # normalized_signal_fft(data_filter, figure=True, xlim=(15e3, 23e3))
+        # plt.show()
 
-        I, Q = get_IQ(data_filter, fc, figure=True)
+
+        I, Q = get_IQ(data_filter, fc, figure=False)
         # denoise
         decompositionQ = seasonal_decompose(Q.T, period=2, two_sided=False)
         trendQ = decompositionQ.trend[2:]
@@ -311,7 +334,7 @@ def demo():
         trendI = decompositionI.trend[2:]
         plt.show()
 
-        I2, Q2 = get_IQ(data_filter2, fc, figure=True)
+        I2, Q2 = get_IQ(data_filter2, fc, figure=False)
         # denoise
         decompositionQ2 = seasonal_decompose(Q2.T, period=2, two_sided=False)
         trendQ2 = decompositionQ2.trend[2:]
@@ -333,9 +356,13 @@ def demo():
         # plt.plot(trendQ)
         # plt.show()
 
-        phase1 = get_phase(trendI.reshape(1, -1), trendQ.reshape(1, -1), figure=True)  # 不展开
-        phase2 = get_phase(trendI2.reshape(1, -1), trendQ2.reshape(1, -1), figure=True)
+        phase1 = get_phase(trendI.reshape(1, -1), trendQ.reshape(1, -1), figure=False)  # 不展开
+        phase2 = get_phase(trendI2.reshape(1, -1), trendQ2.reshape(1, -1), figure=False)
         print(f"标准差:{np.std(phase1)}")
+        plt.figure()
+        plt.plot(phase1.reshape(-1))
+        plt.figure()
+        plt.plot(phase2.reshape(-1))
         plt.show()
         d_p = phase1 - phase2
         plt.plot(d_p.reshape(-1)[100:])
@@ -668,17 +695,16 @@ def split_gesture():
             plt.plot(unwrapped_phase[i])
         plt.show()
 # split_gesture()
-
-from tensorflow.keras import models
-model_file = r'D:\projects\pyprojects\gestrecodemo\nn\models\mic_speaker_phase_234_5.h5'
-model: models.Sequential = models.load_model(model_file)
+# from tensorflow.keras import models
+# model_file = r'D:\projects\pyprojects\gestrecodemo\nn\models\mic_speaker_phase_234_5.h5'
+# model: models.Sequential = models.load_model(model_file)
 # 实时显示phase
 def real_time_phase():
     fig, ax = plt.subplots()
     # ax.set_xlim([0, 48000])
     # ax.set_ylim([-2, 2])
     # ax.set_autoscaley_on(True)
-    max_frame = 100000
+    max_frame = 48000
     phase = [0] * max_frame
     l_phase, = ax.plot(phase)
     motion_start_line = ax.axvline(0, color='r')
@@ -691,14 +717,14 @@ def real_time_phase():
     CHUNK = 2048
     OFFSET_FOR_FLITER = 2000  # 和get_cos_IQ_raw的offset有关，要小于CHUNK
     OFFSET_FOR_IQ = CHUNK
-    N_CHANNELS = 2
+    N_CHANNELS = 8
     DELAY_TIME = 1
     NUM_OF_FREQ = 8
     F0 = 17000
     STEP = 350  # 每个频率的跨度
 
     # 运动检测参数
-    THRESHOLD = 0.008  # 运动判断阈值
+    THRESHOLD = 0.015  # 运动判断阈值
     motion_start_index = -1
     motion_start_index_constant = -1
     motion_stop_index = -1
@@ -708,12 +734,12 @@ def real_time_phase():
     pre_frame = 4
 
     # 手势出现数据
-    gesture_data = None
+    gesture_frames = None
 
     # 为测试添加的
     motion_start_index_list = []
     motion_stop_index_list = []
-    # origin_data, fs = load_audio_data(r'D:\实验数据\2021\毕设\micarrayspeaker\sjj\gesture2\20.wav', 'wav')
+    # origin_data, fs = load_audio_data(r'D:\实验数据\2021\毕设\micarrayspeaker\sjj\gesture2\49.wav', 'wav')
     origin_data, fs = load_audio_data(r'D:\projects\pyprojects\gestrecodemo\realtimesys\test.wav', 'wav')
     data = origin_data.reshape((-1, N_CHANNELS))
     data = data.T  # shape = (num_of_channels, all_frames)
@@ -744,6 +770,8 @@ def real_time_phase():
 
             # 运动判断
             std = np.std(unwrapped_phase[0])
+            if motion_start:
+                motion_start_index_constant -= CHUNK
             if motion_start_index > 0:
                 motion_start_index -= CHUNK
             if motion_stop_index > 0:
@@ -760,7 +788,7 @@ def real_time_phase():
                         lower_than_threshold_count = 0
                         # 运动停止，手势判断
                         # !!!!!，如何frame_len大于max_frame会出现问题，不过很容易修改
-                        gesture_frames_len = motion_stop_index - motion_start_index
+                        gesture_frames_len = motion_stop_index - motion_start_index_constant
                         gesture_frames = frames_int[:, -gesture_frames_len:]
                         # 可改为多线程,快了0.05s左右
                         # gesture_detection(gesture_frames)
@@ -774,6 +802,7 @@ def real_time_phase():
                         # 运动开始，在前4CHUNK阈值已经超过，另外减去pre_frame*CHUNK的提前量
                         motion_start_index_list.append(u_p.shape[1] - CHUNK * (higher_than_threshold_count + pre_frame))
                         motion_start_index = max_frame - CHUNK * (higher_than_threshold_count + pre_frame)
+                        motion_start_index_constant = motion_start_index
                         motion_start = True
                         higher_than_threshold_count = 0
                 else:
@@ -811,7 +840,7 @@ def gesture_detection(gesture_frames):
     import time
     t1 = time.time()
     unwrapped_phase_list = []
-    N_CHANNELS = 2
+    N_CHANNELS = 7
     DELAY_TIME = 1
     NUM_OF_FREQ = 8
     F0 = 17000
@@ -851,9 +880,10 @@ def gesture_detection(gesture_frames):
         # plt.show()
         unwrapped_phase_list.append(np.diff(np.diff(unwrapped_phase)))
     merged_u_p = np.array(unwrapped_phase_list).reshape((NUM_OF_FREQ * N_CHANNELS * 2, -1))
-    # 仿造（之后删除）
-    merged_u_p_fake = np.tile(merged_u_p, (3,1))
-    merged_u_p_fake = np.vstack((merged_u_p_fake, merged_u_p[:16, :]))
+    merged_u_p_fake = merged_u_p
+    # # 仿造（之后删除）
+    # merged_u_p_fake = np.tile(merged_u_p, (3,1))
+    # merged_u_p_fake = np.vstack((merged_u_p_fake, merged_u_p[:16, :]))
     # zero padding
     mean_len = 777
     detla_len = merged_u_p_fake.shape[1] - mean_len
@@ -875,7 +905,7 @@ def gesture_detection_multithread(gesture_frames):
     from concurrent.futures import ThreadPoolExecutor
     t1 = time.time()
 
-    N_CHANNELS = 2
+    N_CHANNELS = 7
     DELAY_TIME = 1
     NUM_OF_FREQ = 8
     F0 = 17000
@@ -886,7 +916,7 @@ def gesture_detection_multithread(gesture_frames):
     def get_phase_and_diff(i):
         fc = F0 + i * STEP
         data_filter = butter_bandpass_filter(gesture_frames, fc - 150, fc + 150)
-        I_raw, Q_raw = get_cos_IQ_raw(data_filter, fc, fs)
+        I_raw, Q_raw = get_cos_IQ_raw(data_filter, fc, 0, fs)
         # 滤波+下采样
         I = my_move_average_overlap(I_raw)
         Q = my_move_average_overlap(Q_raw)
@@ -920,9 +950,11 @@ def gesture_detection_multithread(gesture_frames):
         pool.map(get_phase_and_diff, [i for i in range(NUM_OF_FREQ)])
 
     merged_u_p = np.array(unwrapped_phase_list).reshape((NUM_OF_FREQ * N_CHANNELS * 2, -1))
+    merged_u_p_fake = merged_u_p
+    print(merged_u_p_fake.shape)
     # 仿造（之后删除）
-    merged_u_p_fake = np.tile(merged_u_p, (3,1))
-    merged_u_p_fake = np.vstack((merged_u_p_fake, merged_u_p[:16, :]))
+    # merged_u_p_fake = np.tile(merged_u_p, (3,1))
+    # merged_u_p_fake = np.vstack((merged_u_p_fake, merged_u_p[:16, :]))
     # zero padding
     mean_len = 777
     detla_len = merged_u_p_fake.shape[1] - mean_len
@@ -940,9 +972,6 @@ def gesture_detection_multithread(gesture_frames):
     print(label[np.argmax(y_predict[0])])
     t2 = time.time()
     print(f"use time:{t2-t1}")
-
-
-real_time_phase()
 
 
 def test():
@@ -972,8 +1001,9 @@ if __name__ == '__main__':
     # data = data[48000:]
     # for i in range(0, len(data), 512):
     #     path_length_change_estimation(data[i:i+512])
-    # demo()
+    demo()
     # test()
+    # real_time_phase()
     # phasediff_between_mic()
     # analyze_diff()
     # simu()
