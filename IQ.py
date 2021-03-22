@@ -1,3 +1,5 @@
+import threading
+import numba as nb
 import numpy as np
 from scipy.fftpack import fft, fftfreq
 import matplotlib.pyplot as plt
@@ -278,27 +280,9 @@ def path_length_change_estimation(data):
 
 
 def demo():
-    def pearsonCroCor(data, sample, mode=0):
-        if mode == 2:
-            corresult = np.correlate(data, sample)
-        else:
-            corresult = np.zeros(data.size - sample.size + 1, dtype=np.complex128)
-            # slide the data, every time pick sample.size elements to do pearson with sample
-            i = 0
-            sample_size = sample.size
-            test_rel = np.correlate(sample, sample)
-            while i + sample_size <= data.size:
-                if mode == 1:
-                    corresult[i] = np.correlate(data[i:i + sample_size], sample)[0]
-                else:
-                    # corresult[i]=pearsonr(data[i:i+sample_size],sample)[0]
-                    corresult[i] = np.corrcoef(data[i:i + sample_size], sample)[0][1]
-
-                i += 1
-        return np.abs(corresult)
     # data, fs = load_audio_data(r'D:\实验数据\2021\毕设\micarrayspeaker\sjj\gesture6\65.wav', 'wav')
     # data, fs = load_audio_data(r'D:\projects\pyprojects\gesturerecord\micarray\sinusoid2\1.wav', 'wav')
-    data, fs = load_audio_data(r'D:\projects\pyprojects\gesturerecord\location\0\0.wav', 'wav')
+    data, fs = load_audio_data(r'D:\projects\pyprojects\gesturerecord\location\19khz\0.wav', 'wav')
     data1 = data[48000 * 1:, 0].T
     data2 = data[48000 * 1:, 2].T
     # plt.plot(data2)
@@ -695,9 +679,9 @@ def split_gesture():
             plt.plot(unwrapped_phase[i])
         plt.show()
 # split_gesture()
-# from tensorflow.keras import models
-# model_file = r'D:\projects\pyprojects\gestrecodemo\nn\models\mic_speaker_phase_234_5.h5'
-# model: models.Sequential = models.load_model(model_file)
+from tensorflow.keras import models
+model_file = r'D:\projects\pyprojects\gestrecodemo\nn\models\mic_speaker_phase_234_5.h5'
+model: models.Sequential = models.load_model(model_file)
 # 实时显示phase
 def real_time_phase():
     fig, ax = plt.subplots()
@@ -729,8 +713,8 @@ def real_time_phase():
     motion_start_index_constant = -1
     motion_stop_index = -1
     motion_start = False
-    lower_than_threshold_count = 0  # 超过3次即运动停止
-    higher_than_threshold_count = 0  # 超过3次即运动开始
+    lower_than_threshold_count = 0  # 超过4次即运动停止
+    higher_than_threshold_count = 0  # 超过4次即运动开始
     pre_frame = 4
 
     # 手势出现数据
@@ -792,7 +776,8 @@ def real_time_phase():
                         gesture_frames = frames_int[:, -gesture_frames_len:]
                         # 可改为多线程,快了0.05s左右
                         # gesture_detection(gesture_frames)
-                        gesture_detection_multithread(gesture_frames)
+                        # gesture_detection_multithread(gesture_frames)
+                        threading.Thread(target=gesture_detection_multithread, args=(gesture_frames,)).start()
                 else:
                     lower_than_threshold_count = 0
             else:
@@ -904,7 +889,6 @@ def gesture_detection(gesture_frames):
 def gesture_detection_multithread(gesture_frames):
     from concurrent.futures import ThreadPoolExecutor
     t1 = time.time()
-
     N_CHANNELS = 7
     DELAY_TIME = 1
     NUM_OF_FREQ = 8
@@ -914,17 +898,32 @@ def gesture_detection_multithread(gesture_frames):
 
     unwrapped_phase_list = [None] * NUM_OF_FREQ * 2
     def get_phase_and_diff(i):
+        # filter 0.04s moveing average 0.04 denoise 0.04 getIQ 0.015 unwrap 0.01
+        t0 = time.time()
+        ts = time.time()
         fc = F0 + i * STEP
         data_filter = butter_bandpass_filter(gesture_frames, fc - 150, fc + 150)
+        te = time.time()
+        print(f"filter use time in thread:{te - ts}")
+        ts = time.time()
         I_raw, Q_raw = get_cos_IQ_raw(data_filter, fc, 0, fs)
+        te = time.time()
+        print(f"get IQ use time in thread:{te - ts}")
+        ts = time.time()
         # 滤波+下采样
         I = my_move_average_overlap(I_raw)
         Q = my_move_average_overlap(Q_raw)
+        te = time.time()
+        print(f"move average use time in thread:{te - ts}")
         # denoise
+        ts = time.time()
         decompositionQ = seasonal_decompose(Q.T, period=10, two_sided=False)
         trendQ = decompositionQ.trend
         decompositionI = seasonal_decompose(I.T, period=10, two_sided=False)
         trendI = decompositionI.trend
+
+        te = time.time()
+        print(f"denoise use time in thread:{te - ts}")
 
         trendQ = trendQ.T
         trendI = trendI.T
@@ -937,6 +936,7 @@ def gesture_detection_multithread(gesture_frames):
         trendQ = trendQ[:, 10:]
         trendI = trendI[:, 10:]
 
+        ts = time.time()
         unwrapped_phase = get_phase(trendI, trendQ)  # 这里的展开目前没什么效果
         # plt.plot(unwrapped_phase[0])
         # plt.show()
@@ -946,9 +946,17 @@ def gesture_detection_multithread(gesture_frames):
         # plt.plot(np.diff(unwrapped_phase).reshape(-1))
         # plt.show()
         unwrapped_phase_list[2*i+1] = (np.diff(np.diff(unwrapped_phase)))
+
+        te = time.time()
+        print(f"unwrape use time in thread:{te - ts}")
+
+        te = time.time()
+        print(f"use time in thread:{te - t0}")
+    t3 = time.time()
     with ThreadPoolExecutor(max_workers=8) as pool:
         pool.map(get_phase_and_diff, [i for i in range(NUM_OF_FREQ)])
-
+    t4 = time.time()
+    print(f"get phase use time:{t4-t3}")
     merged_u_p = np.array(unwrapped_phase_list).reshape((NUM_OF_FREQ * N_CHANNELS * 2, -1))
     merged_u_p_fake = merged_u_p
     print(merged_u_p_fake.shape)
@@ -966,10 +974,13 @@ def gesture_detection_multithread(gesture_frames):
         left_zero_padding = np.zeros((NUM_OF_FREQ * 7 * 2, left_zero_padding_len))
         right_zero_padding = np.zeros((NUM_OF_FREQ * 7 * 2, right_zero_padding_len))
         merged_u_p_fake = np.hstack((left_zero_padding, merged_u_p_fake, right_zero_padding))
+    t3 = time.time()
     y_predict = model.predict(merged_u_p_fake.reshape((1, merged_u_p_fake.shape[0], merged_u_p_fake.shape[1], 1)))
     label = ['握紧', '张开', '左滑', '右滑', '上滑', '下滑', '前推', '后推', '顺时针转圈', '逆时针转圈']
     print(np.argmax(y_predict[0]))
     print(label[np.argmax(y_predict[0])])
+    t4 = time.time()
+    print(f"predict use time:{t4-t3}")
     t2 = time.time()
     print(f"use time:{t2-t1}")
 
@@ -1001,9 +1012,9 @@ if __name__ == '__main__':
     # data = data[48000:]
     # for i in range(0, len(data), 512):
     #     path_length_change_estimation(data[i:i+512])
-    demo()
+    # demo()
     # test()
-    # real_time_phase()
+    real_time_phase()
     # phasediff_between_mic()
     # analyze_diff()
     # simu()

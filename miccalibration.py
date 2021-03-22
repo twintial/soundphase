@@ -26,13 +26,13 @@ def crosscor():
                 i += 1
         return np.abs(corresult)
     # data, fs = load_audio_data(r'D:\projects\pyprojects\soundphase\calib\0\0.wav', 'wav')
-    data, fs = load_audio_data(r'D:\projects\pyprojects\gesturerecord\location\sound\0.wav', 'wav')
+    data, fs = load_audio_data(r'D:\projects\pyprojects\gesturerecord\location\19khz\0.wav', 'wav')
     t1 = 1
     t2 = 15
     data1 = data[48000 * t1:48000 * t2 + 500, 0].T
     data2 = data[48000 * t1:48000 * t2, 1].T
     print(len(data2)/48000)
-    plt.plot((np.arange(48000, len(data2) + 48000))/48000, data2)
+    plt.plot((np.arange(48000 * t1, len(data2) + 48000 * t1))/48000, data2)
     plt.show()
 
     '''
