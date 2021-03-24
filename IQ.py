@@ -5,6 +5,9 @@ from scipy.fftpack import fft, fftfreq
 import matplotlib.pyplot as plt
 from scipy.signal import lfilter, butter, find_peaks_cwt, find_peaks, normalize, filtfilt
 from scipy import signal
+import tensorflow.keras.backend as K
+
+import tensorflow as tf
 
 from unwrap import *
 import wave
@@ -13,6 +16,7 @@ from staticremove import *
 from arlpy import bf, utils
 import sklearn
 import time
+import cupy as cp
 index = 0
 plt.rcParams['font.sans-serif'] = ['SimHei']  # 显示中文标签
 plt.rcParams['axes.unicode_minus'] = False
@@ -223,6 +227,25 @@ def my_move_average_overlap(data, win_size=200, overlap=100, axis=-1):
     ret[:, win_size:] = ret[:, win_size:] - ret[:, :-win_size]
     result = ret[:, win_size - 1:] / win_size
     index = np.arange(0, result.shape[1], overlap)
+    return result[:, index]
+
+def my_move_average_overlap_cuda(data, win_size=200, overlap=100, axis=-1):
+    if len(data.shape) == 1:
+        data = data.reshape((1, -1))
+    ret = cp.cumsum(data, axis=axis)
+    ret[:, win_size:] = ret[:, win_size:] - ret[:, :-win_size]
+    result = ret[:, win_size - 1:] / win_size
+    index = cp.arange(0, result.shape[1], overlap)
+    return result[:, index]
+
+
+def my_move_average_overlap_tf(data, win_size=200, overlap=100, axis=-1):
+    if len(data.shape) == 1:
+        data = data.reshape((1, -1))
+    ret = K.cumsum(data, axis=axis)
+    ret[:, win_size:] = ret[:, win_size:] - ret[:, :-win_size]
+    result = ret[:, win_size - 1:] / win_size
+    index = K.arange(0, result.shape[1], overlap)
     return result[:, index]
 
 
@@ -639,6 +662,27 @@ def get_cos_IQ_raw(data: np.ndarray, f, offset, fs=48e3) -> (np.ndarray, np.ndar
     Q_raw = -np.sin(2 * np.pi * f * times) * data
     return I_raw, Q_raw
 
+
+def get_cos_IQ_raw_tf(data: np.ndarray, f, offset, fs=48e3) -> (np.ndarray, np.ndarray):
+    frames = data.shape[1]
+    # offset会一直增长，存在问题
+    times = K.arange(offset, offset + frames, dtype=tf.float64) * 1 / fs
+    I_raw = K.cos(2 * np.pi * f * times) * data
+    Q_raw = -K.sin(2 * np.pi * f * times) * data
+    return I_raw, Q_raw
+
+def get_cos_IQ_raw_cuda(data: np.ndarray, f, offset, fs=48e3) -> (np.ndarray, np.ndarray):
+    # print(data.shape)
+    frames = data.shape[1]
+    # offset会一直增长，存在问题
+    times = cp.arange(offset, offset + frames) * 1 / fs
+
+    data = cp.asarray(data)
+    I_raw = cp.cos(2 * np.pi * f * times) * data
+    Q_raw = -cp.sin(2 * np.pi * f * times) * data
+    return I_raw, Q_raw
+
+
 def split_gesture():
     N_CHANNELS = 2
     DELAY_TIME = 1
@@ -679,9 +723,9 @@ def split_gesture():
             plt.plot(unwrapped_phase[i])
         plt.show()
 # split_gesture()
-from tensorflow.keras import models
-model_file = r'D:\projects\pyprojects\gestrecodemo\nn\models\mic_speaker_phase_234_5.h5'
-model: models.Sequential = models.load_model(model_file)
+# from tensorflow.keras import models
+# model_file = r'D:\projects\pyprojects\gestrecodemo\nn\models\mic_speaker_phase_234_5.h5'
+# model: models.Sequential = models.load_model(model_file)
 # 实时显示phase
 def real_time_phase():
     fig, ax = plt.subplots()
@@ -776,8 +820,8 @@ def real_time_phase():
                         gesture_frames = frames_int[:, -gesture_frames_len:]
                         # 可改为多线程,快了0.05s左右
                         # gesture_detection(gesture_frames)
-                        # gesture_detection_multithread(gesture_frames)
-                        threading.Thread(target=gesture_detection_multithread, args=(gesture_frames,)).start()
+                        gesture_detection_multithread(gesture_frames)
+                        # threading.Thread(target=gesture_detection_multithread, args=(gesture_frames,)).start()
                 else:
                     lower_than_threshold_count = 0
             else:
@@ -834,10 +878,10 @@ def gesture_detection(gesture_frames):
     for i in range(NUM_OF_FREQ):
         fc = F0 + i * STEP
         data_filter = butter_bandpass_filter(gesture_frames, fc - 150, fc + 150)
-        I_raw, Q_raw = get_cos_IQ_raw(data_filter, fc, fs)
+        I_raw, Q_raw = get_cos_IQ_raw_cuda(data_filter, fc, fs)
         # 滤波+下采样
-        I = my_move_average_overlap(I_raw)
-        Q = my_move_average_overlap(Q_raw)
+        I = my_move_average_overlap_cuda(I_raw).get()
+        Q = my_move_average_overlap_cuda(Q_raw).get()
         # denoise
         decompositionQ = seasonal_decompose(Q.T, period=10, two_sided=False)
         trendQ = decompositionQ.trend
@@ -898,26 +942,26 @@ def gesture_detection_multithread(gesture_frames):
 
     unwrapped_phase_list = [None] * NUM_OF_FREQ * 2
     def get_phase_and_diff(i):
-        # filter 0.04s moveing average 0.04 denoise 0.04 getIQ 0.015 unwrap 0.01
+        # filter 0.04s moveing average 0.04 denoise 0.04 getIQ 0.02 unwrap 0.01
         t0 = time.time()
         ts = time.time()
         fc = F0 + i * STEP
-        data_filter = butter_bandpass_filter(gesture_frames, fc - 150, fc + 150)
+        data_filter = butter_bandpass_filter(gesture_frames, fc - 150, fc + 150)  # scipy
         te = time.time()
         print(f"filter use time in thread:{te - ts}")
         ts = time.time()
-        I_raw, Q_raw = get_cos_IQ_raw(data_filter, fc, 0, fs)
+        I_raw, Q_raw = get_cos_IQ_raw(data_filter, fc, 0, fs)  # numpy
         te = time.time()
         print(f"get IQ use time in thread:{te - ts}")
         ts = time.time()
         # 滤波+下采样
-        I = my_move_average_overlap(I_raw)
+        I = my_move_average_overlap(I_raw)  # numpy
         Q = my_move_average_overlap(Q_raw)
         te = time.time()
         print(f"move average use time in thread:{te - ts}")
         # denoise
         ts = time.time()
-        decompositionQ = seasonal_decompose(Q.T, period=10, two_sided=False)
+        decompositionQ = seasonal_decompose(Q.T, period=10, two_sided=False)  # 无法使用加速
         trendQ = decompositionQ.trend
         decompositionI = seasonal_decompose(I.T, period=10, two_sided=False)
         trendI = decompositionI.trend
@@ -937,7 +981,62 @@ def gesture_detection_multithread(gesture_frames):
         trendI = trendI[:, 10:]
 
         ts = time.time()
-        unwrapped_phase = get_phase(trendI, trendQ)  # 这里的展开目前没什么效果
+        unwrapped_phase = get_phase(trendI, trendQ)  # 这里的展开目前没什么效果  # numpy
+        # plt.plot(unwrapped_phase[0])
+        # plt.show()
+        assert unwrapped_phase.shape[1] > 1
+        # 用diff，和两次diff
+        unwrapped_phase_list[2*i] = np.diff(unwrapped_phase)[:, :-1]
+        # plt.plot(np.diff(unwrapped_phase).reshape(-1))
+        # plt.show()
+        unwrapped_phase_list[2*i+1] = (np.diff(np.diff(unwrapped_phase)))
+
+        te = time.time()
+        print(f"unwrape use time in thread:{te - ts}")
+
+        te = time.time()
+        print(f"use time in thread:{te - t0}")
+    def get_phase_and_diff_cuda(i):
+        # filter 0.04s moveing average 0.04 denoise 0.04 getIQ 0.02 unwrap 0.01
+        t0 = time.time()
+        ts = time.time()
+        fc = F0 + i * STEP
+        data_filter = butter_bandpass_filter(gesture_frames, fc - 150, fc + 150)  # scipy
+        te = time.time()
+        print(f"filter use time in thread:{te - ts}")
+        ts = time.time()
+        I_raw, Q_raw = get_cos_IQ_raw_cuda(data_filter, fc, 0, fs)  # numpy
+        te = time.time()
+        print(f"get IQ use time in thread:{te - ts}")
+        ts = time.time()
+        # 滤波+下采样
+        I = my_move_average_overlap_cuda(I_raw).get()  # numpy
+        Q = my_move_average_overlap_cuda(Q_raw).get()
+        te = time.time()
+        print(f"move average use time in thread:{te - ts}")
+        # denoise
+        ts = time.time()
+        decompositionQ = seasonal_decompose(Q.T, period=10, two_sided=False)  # 无法使用加速
+        trendQ = decompositionQ.trend
+        decompositionI = seasonal_decompose(I.T, period=10, two_sided=False)
+        trendI = decompositionI.trend
+
+        te = time.time()
+        print(f"denoise use time in thread:{te - ts}")
+
+        trendQ = trendQ.T
+        trendI = trendI.T
+
+        assert trendI.shape == trendQ.shape
+        if len(trendI.shape) == 1:
+            trendI = trendI.reshape((1, -1))
+            trendQ = trendQ.reshape((1, -1))
+
+        trendQ = trendQ[:, 10:]
+        trendI = trendI[:, 10:]
+
+        ts = time.time()
+        unwrapped_phase = get_phase(trendI, trendQ)  # 这里的展开目前没什么效果  # numpy
         # plt.plot(unwrapped_phase[0])
         # plt.show()
         assert unwrapped_phase.shape[1] > 1
@@ -955,6 +1054,8 @@ def gesture_detection_multithread(gesture_frames):
     t3 = time.time()
     with ThreadPoolExecutor(max_workers=8) as pool:
         pool.map(get_phase_and_diff, [i for i in range(NUM_OF_FREQ)])
+    # for i in range(NUM_OF_FREQ):
+    #     get_phase_and_diff(i)
     t4 = time.time()
     print(f"get phase use time:{t4-t3}")
     merged_u_p = np.array(unwrapped_phase_list).reshape((NUM_OF_FREQ * N_CHANNELS * 2, -1))
