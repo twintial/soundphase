@@ -5,6 +5,7 @@ import time
 from arlpy import bf
 import numpy as np
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 from scipy.fftpack import rfft, irfft, fftfreq, fft, ifft, fftshift
 import wave
 
@@ -171,40 +172,6 @@ def pearsonCroCor(data, sample, mode=0):
 
                 i += 1
         return corresult
-def crosscor():
-    # data, fs = load_audio_data(r'D:\projects\pyprojects\soundphase\calib\0\0.wav', 'wav')
-    data, fs = load_audio_data(r'D:\projects\pyprojects\gesturerecord\location\sound\0.wav', 'wav')
-    # data = butter_bandpass_filter(data.T, 15e3, 23e3)
-    data = data.T
-    t1 = 3
-    t2 = 4.4
-    data1 = data[0, int(48000 * t1):int(48000 * t2 + 500)]
-    data2 = data[1, int(48000 * t1):int(48000 * t2)]
-    # print(len(data2)/48000)
-    plt.figure()
-    plt.plot((np.arange(48000 * t1, len(data2) + 48000 * t1))/48000, data2)
-    plt.show()
-
-    '''
-    测试了mic之间的时间延迟，效果和理论计算一致
-    '''
-    corr = pearsonCroCor(data1, data2)
-    # npsignalplot(corr)
-    plt.figure()
-    plt.plot(corr)
-    # plt.show()
-
-    index = np.argmax(corr)
-    print(index)
-
-    frame_len = 2048
-    y = gcc_phat(data1[:frame_len], data2[:frame_len])
-    print('ifft max ccor val: ', np.max(y))
-    print('ifft delay of sample num: ', np.argmax(y))
-    plt.figure()
-    plt.plot(y)
-    plt.title('ifft gcc')
-    plt.show()
 
 
 def normalized_signal_fft_with_fft(fft, title, fs=48e3, figure=True, xlim=(19e3, 25e3)):
@@ -254,6 +221,25 @@ def vec2theta(vec):
     theta[:, 0] = np.arctan2(vec[:, 1], vec[:, 0])
     theta[:, 1] = np.arcsin(vec[:, 2]/r)
     return theta
+def theta2vec(theta, r=1):
+    # vectors = np.zeros((theta.shape[0], 3))
+    # vectors[:, 0] = r*np.cos(theta[:, 1])*np.cos(theta[:, 0])
+    # vectors[:, 1] = r*np.cos(theta[:, 1])*np.sin(theta[:, 0])
+    # vectors[:, 2] = r*np.sin(theta[:, 1])
+    vectors = []
+    for t in theta:
+        vectors.append(
+            [r * np.cos(t[1]) * np.cos(t[0]),
+             r * np.cos(t[1]) * np.sin(t[0]),
+             r * np.sin(t[1])])
+    return np.array(vectors)
+def generate_big_grid():
+    aziang = np.arange(-180, 180)
+    eleang = np.arange(0, 90)
+    scan_az, scan_el = np.meshgrid(aziang, eleang)
+    scan_angles = np.vstack((scan_az.reshape(-1, order='F'), scan_el.reshape(-1, order='F')))
+    scan_angles = np.deg2rad(scan_angles.T)
+    return theta2vec(scan_angles)
 def gcc_phat_search(x_i, x_j, fs, tau):
     """
     :param x_i: real signal of mic i
@@ -317,12 +303,23 @@ def one_frame(data=None):
         data_seg = data
     fs = 48000
     c = 343
-    level = 3
+    level = 4
+
     grid: np.ndarray = np.load(rf'grid/{level}_north.npz')['grid']
+    # grid = generate_big_grid()
+    # fig = plt.figure()
+    # ax = Axes3D(fig)
+    # ax.scatter(grid[:,0],grid[:,1],grid[:,2])
+    # plt.show()
+    # grid = cons_uca(1)[1:]
     # mic mem pos
     pos = cons_uca(0.043)
     t1 = time.time()
     E = srp_phat(data_seg, pos, grid, c, fs)
+    i_sort = np.argsort(E.reshape(-1))
+    g_sort = grid[i_sort][::-1]
+    for i in range(20):
+        print(rf'top {i} is ', np.rad2deg(vec2theta([g_sort[i]])))
     # E = srp_phat_muti_thread(data, pos, grid, c, fs)
     # E = srp_phat_previous_tau(data_seg, pos, grid, pairs_tau, fs)
     t2 = time.time()
@@ -362,16 +359,54 @@ def split_frame():
         print('='*50)
         # plot_angspect(E_d[0], grid)
 
+
+def crosscor():
+    # data, fs = load_audio_data(r'D:\projects\pyprojects\soundphase\calib\0\0.wav', 'wav')
+    data, fs = load_audio_data(r'D:\projects\pyprojects\gesturerecord\location\sinusoid2\0.wav', 'wav')
+    data = butter_bandpass_filter(data.T, 15e3, 23e3)
+    # data = data.T
+    t1 = 2
+    t2 = 3
+    data1 = data[0, int(48000 * t1):int(48000 * t2 + 500)]
+    data2 = data[1, int(48000 * t1):int(48000 * t2)]
+    # print(len(data2)/48000)
+    plt.figure()
+    plt.plot((np.arange(48000 * t1, len(data2) + 48000 * t1))/48000, data2)
+    plt.show()
+
+    '''
+    测试了mic之间的时间延迟，效果和理论计算一致
+    '''
+    corr = pearsonCroCor(data1, data2)
+    # npsignalplot(corr)
+    plt.figure()
+    plt.plot(corr)
+    # plt.show()
+
+    index = np.argmax(corr)
+    print(index)
+
+    frame_len = 2048 * 2
+    y = gcc_phat(data1[:frame_len], data2[:frame_len])
+    print('ifft max ccor val: ', np.max(y))
+    print('ifft delay of sample num: ', np.argmax(y))
+    plt.figure()
+    plt.plot(y)
+    plt.title('ifft gcc')
+    plt.show()
+
+    one_frame(data[:-1, int(fs * t1):int(fs * t1) + frame_len])
 def simu():
     fs = 48e3
     pos = cons_uca(0.043)
-    # data_1 = cos_wave(1, 1e3, fs, 10)
+    # data_1 = cos_wave(1, 18e3, fs, 10)
     # data_1 = [0] * 100 + [1] * 10 + [0] * 100
     # data_1 = np.array(data_1)
-    data_1 = get_sinusoid(18000, 400, 7, fs, 10)
+    data_1 = get_sinusoid(17000, 350, 8, fs, 10)
 
     data_7 = np.tile(data_1.T, (7, 1))
-    theta = np.deg2rad([[10, 0]])
+    theta = np.deg2rad([[90, 0]])
+    print('ground truth: ', np.rad2deg(theta))
     sd = bf.steering_plane_wave(pos, 343, theta)
     data = beamform_real(data_7, sd, fs)
 
@@ -385,7 +420,7 @@ def simu():
 
     t1 = 2
     t2 = 3
-    data1 = data[int(fs * t1):int(fs * t2 + 500), 4].T
+    data1 = data[int(fs * t1):int(fs * t2 + 500), 0].T
     data2 = data[int(fs * t1):int(fs * t2), 1].T
 
     # data1 = data[50:150 + 50, 0].T

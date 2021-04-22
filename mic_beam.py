@@ -54,66 +54,102 @@ def medfilter (data):
         pdata[j] = 0.15 * data[j - 2] + 0.2 * data[j - 1] + 0.3 * data[j] + 0.2 * data[j + 1] + 0.15 * data[j + 2]
     return pdata
 
+def draw_circle(I, Q):
+    plt.figure()
+    for i in range(0, len(I)):
+        plt.clf()
+        plt.plot(I[:i], Q[:i])
+        plt.pause(0.01)
 def getData():
-    # filename = r'D:/projects/pyprojects/gesturerecord/0/3/2.wav'
-    filename = r'D:\实验数据\2021\毕设\new_speaker\0.wav'
-    starttime = time.time()
-    rawdata,_ = load_audio_data(filename)
+    filepath = r'D:\实验数据\2021\毕设\micarrayspeaker\raw\sjj\gesture2/'
+    files=os.listdir(filepath)
+    for file in files:
+        if file == '60.wav':
+            filename = filepath+file
+            print(filename)
+            rawdata, _ = load_audio_data(filename)
+            rawdata = rawdata[6000:,:]
+            for channelID in [0]:
+                fc = 17350+700*channelID
+                dataphase = []
+                dataam = []
+                for micID in range(7):
+                    data = butter_bandpass_filter(rawdata[:, micID], fc-100, fc+100, 48000)
+                    data = data[48000:]
+                    f = fc
+                    I1 = getI(data, f)
+                    I = move_average_overlap(I1)
+                    Q1 = getQ(data, f)
+                    Q = move_average_overlap(Q1)
+                    decompositionQ = seasonal_decompose(Q, freq=10, two_sided=False)
+                    trendQ = decompositionQ.trend
+                    trendQ = np.hstack((np.array([trendQ[10]] * 10), trendQ[10:]))
 
-    # plt.figure()
-    for channelID in range(7):
-        fc = 17350+700*channelID
-        dataphase = []
-        dataam = []
-        for micID in range(7):
-            data = butter_bandpass_filter(rawdata[:,micID], fc-100, fc+100, 48000)
-            data = data[48000:]
-            f = fc
-            I1 = getI(data, f)
-            I = move_average_overlap(I1)
-            Q1 = getQ(data, f)
-            Q = move_average_overlap(Q1)
-            decompositionQ = seasonal_decompose(Q, freq=10, two_sided=False)
-            trendQ = decompositionQ.trend
+                    decompositionI = seasonal_decompose(I, freq=10, two_sided=False)
+                    trendI = decompositionI.trend
+                    trendI = np.hstack((np.array([trendI[10]] * 10), trendI[10:]))
+                    signaldata = []
 
-            trendQ = np.hstack((np.array([trendQ[10]] * 10), trendQ[10:]))
-            decompositionI = seasonal_decompose(I, freq=10, two_sided=False)
-            trendI = decompositionI.trend
-            trendI = np.hstack((np.array([trendI[10]] * 10), trendI[10:]))
-            signaldata = []
-            for i in range(0, trendI.shape[0]):
-                signalsample = complex(trendQ[i], trendI[i])
-                signaldata.append(signalsample)
-            signal_ph = np.angle(signaldata)
+                    for i in range(0, trendI.shape[0]):
+                        signalsample = complex(trendQ[i], trendI[i])
+                        signaldata.append(signalsample)
+
+                    signal_ph = np.angle(signaldata)
+                    signal_ph = np.unwrap(signal_ph)
+                    signal_am = np.abs(signaldata)
+
+                    # x = signal_am*np.exp(1j*signal_ph)
+                    # draw_circle(np.real(x), np.imag(x))
+                    dataphase.append(signal_ph)
+                    dataam.append(signal_am)
+                dataphase = np.array(dataphase)
+                dataam = np.array(dataam)
+                plt.figure()
+                plt.title('phase')
+                plt.plot((dataphase[2,:]))
+            pos_aoa = np.linspace(0, 360, 3600)
+            pos_aoa = pos_aoa*2*np.pi/360
+            steering_vector = [np.array([1]*len(pos_aoa))]
+            r = 0.043
+            wavelength = 343/17000
+            for micID in range(1, 7):
+                theta = np.pi * (micID - 1) / 3
+                ang = pos_aoa - theta
+                deltaph = 2 * np.pi * r * np.cos(ang) / wavelength
+                tmp = np.exp(1j*deltaph)
+                steering_vector.append(tmp)
+            steering_vector = np.array(steering_vector)
+            signal_vector = dataam*np.exp(1j*dataphase)
+            signal_vector = np.transpose(signal_vector)
+            signal_vector = np.dot(signal_vector, steering_vector)
+            signal_sum = np.angle(signal_vector)
+            signal_sum = np.unwrap(signal_sum, axis=0)
+            signal_sum = np.diff(signal_sum, axis=0)
+            signal_sum = np.transpose(signal_sum)
+            sumsum = np.sum(np.abs(signal_sum), axis=1)
             # plt.figure()
-            # plt.plot(signal_ph,'.')
-            signal_ph = np.unwrap(signal_ph)
-            signal_am = 10*np.log10(np.abs(signaldata))
-            signal_ph = medfilter(signal_ph)
-            signal_am = medfilter(signal_am)
-            signal_ph = medfilter(signal_ph)
-            signal_am = medfilter(signal_am)
-            dataphase.append(signal_ph)
-            dataam.append(signal_am)
-        dataphase = np.array(dataphase)
-        dataam = np.array(dataam)
-        # dataphase = np.unwrap(dataphase)
-        channelID = '%d' % channelID
-        chID = 'channel=' + channelID
-        # plt.plot(np.cos(dataphdiff[0,:]),'.-', label=chID)
-        # plt.legend()
-        plt.figure()
-        plt.plot(dataphase[4, :] - dataphase[5, :])
-        plt.show()
-        plt.figure()
-        for i in [0,1,2,3,4,5,6]:
-            plt.plot(dataphase[i, :],label=i)
-        plt.legend()
-        # dis = get_distance(dataphase, dataam)
-        # dis = np.abs(np.diff(dis, axis=1))
-        # plt.figure()
-        # plt.pcolormesh(dis, vmin=0, vmax=0.1)
-        # plt.colorbar()
+            # plt.plot(sumsum)
+            signal_phase = np.angle(signal_vector)
+            sumsum = list(sumsum)
+            ii = sumsum.index(max(sumsum))
+            print(ii)
+            maxrange = []
+            for i in range(len(sumsum)):
+                cc = np.unwrap(signal_phase[:, i])
+                maxrange.append(np.max(cc) - np.min(cc))
+            # plt.figure()
+            # plt.plot(maxrange, '.')
+            iii = maxrange.index(max(maxrange))
+            print(iii)
+            # plt.figure()
+            # plt.pcolormesh(signal_sum)
+
+            # draw_circle(np.real(signal_vector[:, iii]), np.imag(signal_vector[:, iii]))
+
+            plt.figure()
+            plt.plot((np.unwrap(signal_phase[:, iii])), '.-')
+            plt.show()
+    plt.show()
 
 
 def get_distance(dataphase, dataam):
@@ -229,7 +265,7 @@ def move_average(data):
 
 
 def move_average_overlap(data):
-    win_size = 200
+    win_size = 400
     new_len = len(data) // win_size
     data = data[0:new_len * win_size]
     new_len = new_len*2
@@ -241,16 +277,14 @@ def move_average_overlap(data):
     return result
 
 def getI(data, f):
-    offset = 0
-    times = np.arange(offset, offset+len(data)) * 1 / fs
+    times = np.arange(0, len(data)) * 1 / fs
     mulCos = np.cos(2 * np.pi * f * times) * data
     return mulCos
 
 
 
 def getQ(data, f):
-    offset = 0
-    times = np.arange(offset, offset+len(data)) * 1 / fs
+    times = np.arange(0, len(data)) * 1 / fs
     mulSin = -np.sin(2 * np.pi * f * times) * data
     return mulSin
 

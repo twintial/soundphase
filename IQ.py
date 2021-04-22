@@ -5,9 +5,14 @@ from scipy.fftpack import fft, fftfreq
 import matplotlib.pyplot as plt
 from scipy.signal import lfilter, butter, find_peaks_cwt, find_peaks, normalize, filtfilt
 from scipy import signal
-import tensorflow.keras.backend as K
 
-import tensorflow as tf
+# tensorflow
+# import tensorflow.keras.backend as K
+# from tensorflow.keras import models
+# model_file = r'D:\projects\pyprojects\gestrecodemo\nn\models\mic_speaker_phase_234_5.h5'
+# model: models.Sequential = models.load_model(model_file)
+# import tensorflow as tf
+
 
 from unwrap import *
 import wave
@@ -83,20 +88,20 @@ def power2db(power):
 def normalized_signal_fft(data, fs=48e3, figure=False, xlim=(0, 25e3)):
     N = len(data)
     y = np.abs(fft(data)) / N
-    # 这里要不要乘2？
+    # 这里要不要乘2？要乘，但是当N为偶数时第一个不要乘
     y_signle: np.ndarray = y[:int(np.round(N / 2))] * 2
     x = fftfreq(N) * fs
     x = x[x >= 0]
     db = power2db(y_signle)
 
     # 用于调制振幅
-    # peaks, _ = find_peaks(y_signle, height=3)
-    # plt.plot(y_signle)
-    # plt.plot(peaks, y_signle[peaks], "x")
-    # plt.plot(np.zeros_like(y_signle), "--", color="gray")
-    # plt.show()
-    # print(x[peaks])
-    # print(y_signle[peaks])
+    peaks, _ = find_peaks(y_signle, height=12)
+    plt.plot(y_signle)
+    plt.plot(peaks, y_signle[peaks], "x")
+    plt.plot(np.zeros_like(y_signle), "--", color="gray")
+    plt.show()
+    print(x[peaks])
+    print(y_signle[peaks])
 
     if figure:
         plt.figure()
@@ -303,9 +308,13 @@ def path_length_change_estimation(data):
 
 
 def demo():
-    # data, fs = load_audio_data(r'D:\实验数据\2021\毕设\micarrayspeaker\sjj\gesture6\65.wav', 'wav')
+    # data, fs = load_audio_data(r'D:\实验数据\2021\毕设\micarrayspeaker\sjj\gesture3\0.wav', 'wav')
     # data, fs = load_audio_data(r'D:\projects\pyprojects\gesturerecord\micarray\sinusoid2\1.wav', 'wav')
-    data, fs = load_audio_data(r'D:\projects\pyprojects\gesturerecord\location\19khz\0.wav', 'wav')
+    # data, fs = load_audio_data(r'D:\实验数据\2021\毕设\new_speaker\0.wav', 'wav')
+    data, fs = load_audio_data(r'D:\实验数据\2021\2021.4.22\sinsoid\11.wav', 'wav')
+    # audio_binary = tf.io.read_file(r'D:\实验数据\2021\毕设\micarrayspeaker\zq\gesture1\1.wav')
+    # data, fs = tf.audio.decode_wav(audio_binary)  # 会变成-1，1
+    # data = data.numpy()
     data1 = data[48000 * 1:, 0].T
     data2 = data[48000 * 1:, 2].T
     # plt.plot(data2)
@@ -322,15 +331,15 @@ def demo():
     normalized_signal_fft(data_filter, figure=True, xlim=(15e3, 23e3))
     plt.show()
     # fc = 17350 + 700 * 0
-    step = 350
-    f0 = 17000
+    step = 700
+    f0 = 17350
     for i in range(8):
         fc = f0 + step * i
         data_filter = butter_bandpass_filter(data1, fc - 150, fc + 150)
         data_filter2 = butter_bandpass_filter(data2, fc - 150, fc + 150)
         # data = data[48000:, 0]
-        # normalized_signal_fft(data_filter, figure=True, xlim=(15e3, 23e3))
-        # plt.show()
+        normalized_signal_fft(data_filter, figure=True, xlim=(15e3, 23e3))
+        plt.show()
 
 
         I, Q = get_IQ(data_filter, fc, figure=False)
@@ -363,17 +372,17 @@ def demo():
         # plt.plot(trendQ)
         # plt.show()
 
-        phase1 = get_phase(trendI.reshape(1, -1), trendQ.reshape(1, -1), figure=False)  # 不展开
+        phase1 = get_phase(trendI.reshape(1, -1), trendQ.reshape(1, -1), figure=False)
         phase2 = get_phase(trendI2.reshape(1, -1), trendQ2.reshape(1, -1), figure=False)
         print(f"标准差:{np.std(phase1)}")
         plt.figure()
-        plt.plot(phase1.reshape(-1))
+        plt.plot(phase1.reshape(-1)[:])
         plt.figure()
-        plt.plot(phase2.reshape(-1))
+        plt.plot(phase2.reshape(-1)[:])
         plt.show()
-        d_p = phase1 - phase2
-        plt.plot(d_p.reshape(-1)[100:])
-        plt.title("phase diff")
+        # d_p = phase1 - phase2
+        # plt.plot(d_p.reshape(-1)[100:])
+        # plt.title("phase diff")
         # magn = get_magnitude(trendI, trendQ, figure=True)
         plt.show()
     fc = 17350
@@ -424,6 +433,44 @@ def demo():
     # normalized_signal_fft(I, figure=True)
     plt.show()
 
+def visualization():
+    data, fs = load_audio_data(r'D:\实验数据\2021\newposition\sjj\gesture1\67.wav', 'wav')
+    data = data[48000 * 1:].T
+    NUM_OF_FREQ = 8
+    F0=17350
+    STEP=700
+    for i in range(NUM_OF_FREQ):
+        fc = F0 + i * STEP
+        data_filter = butter_bandpass_filter(data, fc - 150, fc + 150)
+        I_raw, Q_raw = get_cos_IQ_raw_cuda(data_filter, fc, fs)
+        # 滤波+下采样
+        I = my_move_average_overlap_cuda(I_raw).get()
+        Q = my_move_average_overlap_cuda(Q_raw).get()
+        # denoise
+        decompositionQ = seasonal_decompose(Q.T, period=10, two_sided=False)
+        trendQ = decompositionQ.trend[10:]
+        decompositionI = seasonal_decompose(I.T, period=10, two_sided=False)
+        trendI = decompositionI.trend[10:]
+
+        trendQ = trendQ.T
+        trendI = trendI.T
+
+        assert trendI.shape == trendQ.shape
+        if len(trendI.shape) == 1:
+            trendI = trendI.reshape((1, -1))
+            trendQ = trendQ.reshape((1, -1))
+
+        trendQ = I
+        trendI = Q
+
+        unwrapped_phase = get_phase(trendI, trendQ)  # 这里的展开目前没什么效果
+        plt.figure()
+        plt.title(time.time() / 60)
+        for j in range(7):
+            plt.subplot(4, 2, j + 1)
+            plt.plot(unwrapped_phase[j])
+        plt.get_current_fig_manager().window.showMaximized()
+        plt.show()
 
 def phasediff_between_mic():
     data, fs = load_audio_data(r'D:\实验数据\2021\毕设\micarray\sjj\gesture3\0.wav', 'wav')
@@ -723,9 +770,7 @@ def split_gesture():
             plt.plot(unwrapped_phase[i])
         plt.show()
 # split_gesture()
-# from tensorflow.keras import models
-# model_file = r'D:\projects\pyprojects\gestrecodemo\nn\models\mic_speaker_phase_234_5.h5'
-# model: models.Sequential = models.load_model(model_file)
+
 # 实时显示phase
 def real_time_phase():
     fig, ax = plt.subplots()
@@ -768,7 +813,8 @@ def real_time_phase():
     motion_start_index_list = []
     motion_stop_index_list = []
     # origin_data, fs = load_audio_data(r'D:\实验数据\2021\毕设\micarrayspeaker\sjj\gesture2\49.wav', 'wav')
-    origin_data, fs = load_audio_data(r'D:\projects\pyprojects\gestrecodemo\realtimesys\test.wav', 'wav')
+    # origin_data, fs = load_audio_data(r'D:\实验数据\2021\毕设\micarrayspeaker\sjj\2021\3-25\0.wav', 'wav')
+    origin_data, fs = load_audio_data(r'D:\projects\pyprojects\gestrecodemo\realtimesys\test.wav','wav')
     data = origin_data.reshape((-1, N_CHANNELS))
     data = data.T  # shape = (num_of_channels, all_frames)
     data = data[:, int(fs * DELAY_TIME):]
@@ -816,7 +862,8 @@ def real_time_phase():
                         lower_than_threshold_count = 0
                         # 运动停止，手势判断
                         # !!!!!，如何frame_len大于max_frame会出现问题，不过很容易修改
-                        gesture_frames_len = motion_stop_index - motion_start_index_constant
+                        gesture_frames_len = motion_stop_index - motion_start_index_constant - max_frame
+                        print(gesture_frames_len)
                         gesture_frames = frames_int[:, -gesture_frames_len:]
                         # 可改为多线程,快了0.05s左右
                         # gesture_detection(gesture_frames)
@@ -831,7 +878,7 @@ def real_time_phase():
                         # 运动开始，在前4CHUNK阈值已经超过，另外减去pre_frame*CHUNK的提前量
                         motion_start_index_list.append(u_p.shape[1] - CHUNK * (higher_than_threshold_count + pre_frame))
                         motion_start_index = max_frame - CHUNK * (higher_than_threshold_count + pre_frame)
-                        motion_start_index_constant = motion_start_index
+                        motion_start_index_constant = - CHUNK * (higher_than_threshold_count + pre_frame)
                         motion_start = True
                         higher_than_threshold_count = 0
                 else:
@@ -896,12 +943,17 @@ def gesture_detection(gesture_frames):
             trendI = trendI.reshape((1, -1))
             trendQ = trendQ.reshape((1, -1))
 
-        trendQ = trendQ[:, 10:]
-        trendI = trendI[:, 10:]
+        trendQ = I
+        trendI = Q
 
         unwrapped_phase = get_phase(trendI, trendQ)  # 这里的展开目前没什么效果
-        # plt.plot(unwrapped_phase[0])
-        # plt.show()
+        if i == 0:
+            plt.figure()
+            plt.title(time.time() / 60)
+            for j in range(7):
+                plt.subplot(4, 2, j + 1)
+                plt.plot(unwrapped_phase[j])
+            plt.pause(0.01)
         assert unwrapped_phase.shape[1] > 1
         # 用diff，和两次diff
         unwrapped_phase_list.append(np.diff(unwrapped_phase)[:, :-1])
@@ -1053,7 +1105,7 @@ def gesture_detection_multithread(gesture_frames):
         print(f"use time in thread:{te - t0}")
     t3 = time.time()
     with ThreadPoolExecutor(max_workers=8) as pool:
-        pool.map(get_phase_and_diff, [i for i in range(NUM_OF_FREQ)])
+        pool.map(get_phase_and_diff_cuda, [i for i in range(NUM_OF_FREQ)])
     # for i in range(NUM_OF_FREQ):
     #     get_phase_and_diff(i)
     t4 = time.time()
@@ -1114,8 +1166,9 @@ if __name__ == '__main__':
     # for i in range(0, len(data), 512):
     #     path_length_change_estimation(data[i:i+512])
     # demo()
+    visualization()
     # test()
-    real_time_phase()
+    # real_time_phase()
     # phasediff_between_mic()
     # analyze_diff()
     # simu()
